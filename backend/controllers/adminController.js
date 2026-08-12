@@ -1,5 +1,10 @@
 const AuditLog = require('../models/AuditLog');
 const Admin = require('../models/Admin');
+const Provider = require('../models/Provider');
+const Booking = require('../models/Booking');
+const User = require('../models/User');
+const ServiceType = require('../models/ServiceType');
+const { sendSMS, smsTemplates } = require('../utils/smsService');
 
 const logAudit = async (action, req, target = {}, details = {}) => {
   try {

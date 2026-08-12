@@ -2,7 +2,7 @@
 
 **Pattern:** Living Log of Development Progress  
 **Last Updated:** August 13, 2026  
-**Status:** Beta Launch Ready — Audited, SEO-Optimized, Map Picker, Logo Branding, Coverage Radius, Medical Visit Reports, Super Admin Audit Log System, Comprehensive Bilingual Language Engine, Frontend Dist Static Serving & Backend Syntax Fixes Implemented  
+**Status:** Beta Launch Ready — Audited, SEO-Optimized, Map Picker, Logo Branding, Coverage Radius, Medical Visit Reports, Super Admin Audit Log System, Comprehensive Bilingual Language Engine, Backend Dist Directory & Standalone Server Deployment Implemented  
 
 ---
 
@@ -10,7 +10,7 @@
 
 - **Stack:** Full MERN (MongoDB, Express.js, React + Vite, Node.js).
 - **Design Principles:** Mobile-first PWA, 3G-optimized, budget Android friendly, Nepali-first UI copy (English secondary), trust-forward badges, emergency helpline integration, **Official Standalone House-Stethoscope Icon Mark** (`/icon.png`), **Thematic Icon System** (`var(--primary)`, `var(--secondary)`, `var(--accent)`), **Full Reactive Bilingual Engine** (instant switching between Nepali & English).
-- **Static Asset & SPA Serving:** Express `server.js` serves static assets directly from `../frontend/dist` with wildcard fallback routing to `index.html` for single-port production deployments.
+- **Standalone Backend Dist & SPA Serving:** `backend/dist` folder created containing compiled frontend assets. Express `server.js` checks `path.join(__dirname, 'dist')` first (falling back to `../frontend/dist`) and handles SPA wildcard route navigation (`app.get('*')`) for single-directory server deployments.
 - **Port Allocation:** `5004` for Express API (matching convention: NirmanLink=5000 / FlapCard=5001 / FlapMain=5003).
 
 ---
@@ -27,8 +27,8 @@
 - `Review.js`: Patient reviews & ratings with automatic provider rating aggregation.
 
 ### API Surface & Controllers (`/controllers` & `/routes` & `server.js`)
-- `adminController.js`: Fixed orphaned block causing `SyntaxError: await is only valid in async functions`. Passed `node -c` syntax check cleanly.
-- `server.js`: Serves `../frontend/dist` static directory and SPA wildcard fallback `app.get('*')`.
+- `dist/`: Populated inside `backend/` containing static assets, `index.html`, `manifest.json`, `robots.txt`, `sitemap.xml`, `logo.png`, `icon.png`.
+- `server.js`: Detects `backend/dist` directly and serves static assets and SPA catch-all route `app.get('*')`.
 - `/api/auth`: Patient registration, provider registration (with `serviceRadiusKm`), unified login, admin login, profile (`/me`), patient profile update (`PATCH /api/auth/profile`).
 - `/api/providers`: Available verified providers by ward/service, public profile, provider self-service profile update (`PATCH /api/providers/profile`) & availability/radius update (`PATCH /api/providers/availability`).
 - `/api/bookings`: Create booking, patient's bookings, provider's assigned visits, state machine status updates (with cancellation support & `visitReport` submission), dispatch provider assignment.
@@ -54,7 +54,7 @@
 
 ## 4. Verification & Testing
 
-- **Syntax Validation:** Ran `node -c controllers/adminController.js server.js` — verified zero syntax errors.
+- **Syntax & Directory Check:** `backend/dist` created and verified; `node -c server.js` passed with zero errors.
 - **Database Seed:** Executed `npm run seed` — Super Admin account created (`superadmin@gharkodoctor.com` / `admin123456`).
-- **Frontend Production Build:** Executed `npm run build` — compiled cleanly into `frontend/dist/`.
-- **Server Static Serving:** Express server configured to serve `frontend/dist` static build with SPA client-side routing fallback.
+- **Frontend Production Build:** Executed `npm run build` — compiled cleanly into `frontend/dist/` and copied to `backend/dist/`.
+- **Server Static Serving:** Express server serves `backend/dist` static assets and SPA client-side routing fallback `app.get('*')`.

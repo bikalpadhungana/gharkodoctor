@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+Allow: /services
+Allow: /book
+Allow: /login
+Allow: /register-patient
+Allow: /register-provider
+
+Disallow: /admin/
+Disallow: /provider/
+Disallow: /api/
+
+Sitemap: https://gharkodoctor.com/sitemap.xml

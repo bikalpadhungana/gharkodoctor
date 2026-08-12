@@ -29,10 +29,15 @@ const fs = require('fs');
 // Static file serving for uploads
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+// Determine dist path: backend/dist first, fallback to ../frontend/dist
+let distPath = path.join(__dirname, 'dist');
+if (!fs.existsSync(distPath)) {
+  distPath = path.join(__dirname, '../frontend/dist');
+}
+
 // Serve frontend dist build files if present
-const frontendDistPath = path.join(__dirname, '../frontend/dist');
-if (fs.existsSync(frontendDistPath)) {
-  app.use(express.static(frontendDistPath));
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
 }
 
 // API Routes
@@ -53,12 +58,12 @@ app.get('/api/health', (req, res) => {
 });
 
 // SPA Catch-All Route for Frontend Navigation
-if (fs.existsSync(frontendDistPath)) {
+if (fs.existsSync(distPath)) {
   app.get('*', (req, res, next) => {
     if (req.originalUrl.startsWith('/api') || req.originalUrl.startsWith('/uploads')) {
       return next();
     }
-    res.sendFile(path.join(frontendDistPath, 'index.html'));
+    res.sendFile(path.join(distPath, 'index.html'));
   });
 }
 
