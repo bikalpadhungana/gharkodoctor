@@ -1,8 +1,8 @@
 # GharkoDoctor — System Progress Document
 
 **Pattern:** Living Log of Development Progress  
-**Last Updated:** August 12, 2026  
-**Status:** Beta Launch Ready — Audited, SEO-Optimized, Map Picker, Logo Branding, Coverage Radius, Medical Visit Reports, Super Admin Audit Log System & Comprehensive Bilingual Language Engine Implemented  
+**Last Updated:** August 13, 2026  
+**Status:** Beta Launch Ready — Audited, SEO-Optimized, Map Picker, Logo Branding, Coverage Radius, Medical Visit Reports, Super Admin Audit Log System, Comprehensive Bilingual Language Engine, Frontend Dist Static Serving & Backend Syntax Fixes Implemented  
 
 ---
 
@@ -10,6 +10,7 @@
 
 - **Stack:** Full MERN (MongoDB, Express.js, React + Vite, Node.js).
 - **Design Principles:** Mobile-first PWA, 3G-optimized, budget Android friendly, Nepali-first UI copy (English secondary), trust-forward badges, emergency helpline integration, **Official Standalone House-Stethoscope Icon Mark** (`/icon.png`), **Thematic Icon System** (`var(--primary)`, `var(--secondary)`, `var(--accent)`), **Full Reactive Bilingual Engine** (instant switching between Nepali & English).
+- **Static Asset & SPA Serving:** Express `server.js` serves static assets directly from `../frontend/dist` with wildcard fallback routing to `index.html` for single-port production deployments.
 - **Port Allocation:** `5004` for Express API (matching convention: NirmanLink=5000 / FlapCard=5001 / FlapMain=5003).
 
 ---
@@ -25,7 +26,9 @@
 - `Booking.js`: Core booking state machine (`requested → confirmed → en_route → completed → cancelled`) with full status history auditing, payment verification status (`pending | paid | refunded`), and **`visitReport` (vital signs, completed task checklist, medical summary notes, attached documents & camera photos)**.
 - `Review.js`: Patient reviews & ratings with automatic provider rating aggregation.
 
-### API Surface & Controllers (`/controllers` & `/routes`)
+### API Surface & Controllers (`/controllers` & `/routes` & `server.js`)
+- `adminController.js`: Fixed orphaned block causing `SyntaxError: await is only valid in async functions`. Passed `node -c` syntax check cleanly.
+- `server.js`: Serves `../frontend/dist` static directory and SPA wildcard fallback `app.get('*')`.
 - `/api/auth`: Patient registration, provider registration (with `serviceRadiusKm`), unified login, admin login, profile (`/me`), patient profile update (`PATCH /api/auth/profile`).
 - `/api/providers`: Available verified providers by ward/service, public profile, provider self-service profile update (`PATCH /api/providers/profile`) & availability/radius update (`PATCH /api/providers/availability`).
 - `/api/bookings`: Create booking, patient's bookings, provider's assigned visits, state machine status updates (with cancellation support & `visitReport` submission), dispatch provider assignment.
@@ -38,7 +41,7 @@
 
 - **Bilingual Engine Audit & Fix:**
   - Audited [AdminDashboardPage.jsx](file:///Users/bikalpadhungana/Documents/bikalpakolab/software/gharkodoctor/frontend/src/pages/AdminDashboardPage.jsx), [BookingDetailPage.jsx](file:///Users/bikalpadhungana/Documents/bikalpakolab/software/gharkodoctor/frontend/src/pages/BookingDetailPage.jsx), and [BookVisitPage.jsx](file:///Users/bikalpadhungana/Documents/bikalpakolab/software/gharkodoctor/frontend/src/pages/BookVisitPage.jsx).
-  - All tab titles, headers, labels, placeholders, card statistics, action buttons, and status indicators now react dynamically to the header language toggle (नेपाली / English).
+  - All tab titles, headers, labels, placeholders, card statistics, action buttons, and status indicators react dynamically to the header language toggle (नेपाली / English).
 - **Service Provider Profile Image Upload Fix:**
   - Added `profileImage` payload propagation in [ProviderProfilePage.jsx](file:///Users/bikalpadhungana/Documents/bikalpakolab/software/gharkodoctor/frontend/src/pages/ProviderProfilePage.jsx).
 - **Super Admin Control Center ([AdminDashboardPage.jsx](file:///Users/bikalpadhungana/Documents/bikalpakolab/software/gharkodoctor/frontend/src/pages/AdminDashboardPage.jsx)):**
@@ -51,6 +54,7 @@
 
 ## 4. Verification & Testing
 
+- **Syntax Validation:** Ran `node -c controllers/adminController.js server.js` — verified zero syntax errors.
 - **Database Seed:** Executed `npm run seed` — Super Admin account created (`superadmin@gharkodoctor.com` / `admin123456`).
-- **Frontend Production Build:** Executed `npm run build` — compiled cleanly (21.1 kB CSS, 530.5 kB JS).
-- **Beta Readiness Check:** All checklist items verified in [betalog.md](file:///Users/bikalpadhungana/Documents/bikalpakolab/software/gharkodoctor/betalog.md).
+- **Frontend Production Build:** Executed `npm run build` — compiled cleanly into `frontend/dist/`.
+- **Server Static Serving:** Express server configured to serve `frontend/dist` static build with SPA client-side routing fallback.

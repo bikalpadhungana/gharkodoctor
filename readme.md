@@ -159,3 +159,4 @@ The `ServiceType` table is the whole point of the Registry approach: launching "
 ---
 
 *Next step: once §10 is answered, this document should get a companion `developmentplan.md` with sprint breakdown, following the same living-log convention as antygravity.*# gharkodoctor
+# gharkodoctor

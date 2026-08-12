@@ -201,56 +201,6 @@ exports.getAuditLogs = async (req, res, next) => {
     next(error);
   }
 };
-  try {
-    const [
-      totalPatients,
-      totalProviders,
-      pendingVerifications,
-      verifiedProviders,
-      totalBookings,
-      activeBookings,
-      completedBookings,
-      totalRevenue
-    ] = await Promise.all([
-      User.countDocuments(),
-      Provider.countDocuments(),
-      Provider.countDocuments({ verificationStatus: 'pending' }),
-      Provider.countDocuments({ verificationStatus: 'verified' }),
-      Booking.countDocuments(),
-      Booking.countDocuments({ status: { $in: ['requested', 'confirmed', 'en_route'] } }),
-      Booking.countDocuments({ status: 'completed' }),
-      Booking.aggregate([
-        { $match: { status: 'completed', paymentStatus: 'paid' } },
-        { $group: { _id: null, total: { $sum: '$amount' } } }
-      ])
-    ]);
-
-    // Recent bookings
-    const recentBookings = await Booking.find()
-      .populate('patient', 'name phone')
-      .populate('provider', 'name phone')
-      .populate('serviceType', 'displayName')
-      .sort('-createdAt')
-      .limit(10);
-
-    res.json({
-      success: true,
-      stats: {
-        totalPatients,
-        totalProviders,
-        pendingVerifications,
-        verifiedProviders,
-        totalBookings,
-        activeBookings,
-        completedBookings,
-        totalRevenue: totalRevenue[0]?.total || 0
-      },
-      recentBookings
-    });
-  } catch (error) {
-    next(error);
-  }
-};
 
 // @desc    Get pending provider verifications
 // @route   GET /api/admin/providers/pending
