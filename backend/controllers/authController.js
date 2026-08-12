@@ -5,16 +5,32 @@ const { generateToken } = require('../middleware/auth');
 
 // @desc    Register a patient
 // @route   POST /api/auth/register/patient
+// @desc    Register a patient
+// @route   POST /api/auth/register/patient
 exports.registerPatient = async (req, res, next) => {
   try {
     const { name, phone, password, address, ward, municipality } = req.body;
 
-    const existingUser = await User.findOne({ phone });
+    if (!name || !phone || !password) {
+      return res.status(400).json({ success: false, message: 'नाम, फोन नम्बर र पासवर्ड आवश्यक छ' });
+    }
+
+    const cleanPhone = phone.toString().trim().replace(/[\s-]/g, '');
+
+    const existingUser = await User.findOne({ phone: cleanPhone });
     if (existingUser) {
       return res.status(400).json({ success: false, message: 'यो फोन नम्बर पहिले नै दर्ता भइसकेको छ' });
     }
 
-    const user = await User.create({ name, phone, password, address, ward, municipality });
+    const user = await User.create({
+      name: name.trim(),
+      phone: cleanPhone,
+      password,
+      address: address || '',
+      ward: ward || '',
+      municipality: municipality || ''
+    });
+
     const token = generateToken(user._id, 'patient');
 
     res.status(201).json({
@@ -46,16 +62,36 @@ exports.registerProvider = async (req, res, next) => {
       serviceArea, serviceRadiusKm, locationCoords, availabilitySchedule
     } = req.body;
 
-    const existingProvider = await Provider.findOne({ phone });
+    if (!name || !phone || !password) {
+      return res.status(400).json({ success: false, message: 'नाम, फोन नम्बर र पासवर्ड आवश्यक छ' });
+    }
+
+    const cleanPhone = phone.toString().trim().replace(/[\s-]/g, '');
+
+    const existingProvider = await Provider.findOne({ phone: cleanPhone });
     if (existingProvider) {
       return res.status(400).json({ success: false, message: 'यो फोन नम्बर पहिले नै दर्ता भइसकेको छ' });
     }
 
+    // Resolve category safely if missing
+    const ServiceType = require('../models/ServiceType');
+    let targetCategory = category;
+    if (!targetCategory || targetCategory === '') {
+      const defaultService = await ServiceType.findOne();
+      targetCategory = defaultService?._id;
+    }
+
     const provider = await Provider.create({
-      name, phone, password, category,
-      address, ward, municipality, bio,
-      verificationDocs: { citizenshipId, licenseNumber },
-      communityReference,
+      name: name.trim(),
+      phone: cleanPhone,
+      password,
+      category: targetCategory,
+      address: address || '',
+      ward: ward || '',
+      municipality: municipality || '',
+      bio: bio || '',
+      verificationDocs: { citizenshipId: citizenshipId || '', licenseNumber: licenseNumber || '' },
+      communityReference: communityReference || '',
       serviceArea: serviceArea || [],
       serviceRadiusKm: serviceRadiusKm || 5,
       locationCoords: locationCoords || { lat: 27.7172, lng: 85.3240 },
@@ -80,33 +116,51 @@ exports.registerProvider = async (req, res, next) => {
   }
 };
 
-// @desc    Login (patient or provider)
+// @desc    Login (patient, provider, or admin)
 // @route   POST /api/auth/login
 exports.login = async (req, res, next) => {
   try {
-    const { phone, password } = req.body;
+    const rawInput = (req.body.phone || req.body.email || '').toString().trim();
+    const { password } = req.body;
 
-    if (!phone || !password) {
-      return res.status(400).json({ success: false, message: 'फोन नम्बर र पासवर्ड आवश्यक छ' });
+    if (!rawInput || !password) {
+      return res.status(400).json({ success: false, message: 'फोन नम्बर/इमेल र पासवर्ड आवश्यक छ' });
     }
 
-    // Try patient first
-    let user = await User.findOne({ phone }).select('+password');
+    const cleanPhone = rawInput.replace(/[\s-]/g, '');
+    let user = null;
     let role = 'patient';
 
-    // If not patient, try provider
+    // 1. Check Patient User collection
+    user = await User.findOne({
+      $or: [{ phone: cleanPhone }, { phone: rawInput }, { email: rawInput.toLowerCase() }]
+    }).select('+password');
+
+    // 2. Check Health Provider collection
     if (!user) {
-      user = await Provider.findOne({ phone }).select('+password');
+      user = await Provider.findOne({
+        $or: [{ phone: cleanPhone }, { phone: rawInput }, { email: rawInput.toLowerCase() }]
+      }).select('+password');
       role = 'provider';
     }
 
+    // 3. Check Admin / SuperAdmin collection
     if (!user) {
-      return res.status(401).json({ success: false, message: 'गलत फोन नम्बर वा पासवर्ड' });
+      user = await Admin.findOne({
+        $or: [{ email: rawInput.toLowerCase() }, { name: rawInput }]
+      }).select('+password');
+      if (user) {
+        role = user.role || 'admin';
+      }
+    }
+
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'गलत फोन नम्बर/इमेल वा पासवर्ड' });
     }
 
     const isMatch = await user.matchPassword(password);
     if (!isMatch) {
-      return res.status(401).json({ success: false, message: 'गलत फोन नम्बर वा पासवर्ड' });
+      return res.status(401).json({ success: false, message: 'गलत फोन नम्बर/इमेल वा पासवर्ड' });
     }
 
     const token = generateToken(user._id, role);
@@ -114,7 +168,8 @@ exports.login = async (req, res, next) => {
     const userData = {
       id: user._id,
       name: user.name,
-      phone: user.phone,
+      phone: user.phone || user.email,
+      email: user.email,
       role
     };
 

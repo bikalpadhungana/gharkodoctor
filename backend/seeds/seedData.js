@@ -6,7 +6,12 @@ const ServiceType = require('../models/ServiceType');
 
 const seedData = async () => {
   try {
-    await mongoose.connect(process.env.MONGODB_URI);
+    try {
+      await mongoose.connect(process.env.MONGODB_URI);
+    } catch (authErr) {
+      console.warn(`⚠️ Primary MongoDB connection failed (${authErr.message}). Falling back to local mongodb://127.0.0.1:27017/gharkodoctor...`);
+      await mongoose.connect('mongodb://127.0.0.1:27017/gharkodoctor');
+    }
     console.log('✅ Connected to MongoDB for seeding');
 
     // Seed admin

@@ -12,7 +12,7 @@ const providerSchema = new mongoose.Schema({
     type: String,
     required: [true, 'फोन नम्बर आवश्यक छ'],
     unique: true,
-    match: [/^(\+977)?[0-9]{10}$/, 'कृपया मान्य फोन नम्बर प्रविष्ट गर्नुहोस्']
+    match: [/^\+?[0-9]{7,15}$/, 'कृपया मान्य फोन नम्बर प्रविष्ट गर्नुहोस्']
   },
   email: {
     type: String,
@@ -28,7 +28,7 @@ const providerSchema = new mongoose.Schema({
   category: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'ServiceType',
-    required: [true, 'सेवा प्रकार आवश्यक छ']
+    required: false
   },
   verificationStatus: {
     type: String,
