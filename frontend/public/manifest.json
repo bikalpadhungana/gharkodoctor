@@ -1,0 +1,22 @@
+{
+  "short_name": "GharkoDoctor",
+  "name": "घरको डाक्टर | GharkoDoctor — Home Health Care Nepal",
+  "description": "Nepal's premier trust-verified home medical visit and nurse booking platform.",
+  "icons": [
+    {
+      "src": "pwa-192x192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "pwa-512x512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0f172a",
+  "theme_color": "#0d9488",
+  "display": "standalone",
+  "orientation": "portrait"
+}
