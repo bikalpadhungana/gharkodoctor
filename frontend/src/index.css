@@ -381,3 +381,33 @@ svg.lucide {
   place-items: center;
 }
 
+/* Desktop Responsive Layout Utilities */
+@media (min-width: 768px) {
+  .hero-desktop-grid {
+    display: grid !important;
+    grid-template-columns: 1.2fr 0.8fr !important;
+    gap: 32px !important;
+    align-items: center !important;
+    padding: 36px 32px !important;
+  }
+
+  .trust-desktop-grid {
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 14px !important;
+  }
+
+  .services-desktop-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)) !important;
+    gap: 16px !important;
+  }
+
+  .cta-desktop-card {
+    display: grid !important;
+    grid-template-columns: 1fr auto !important;
+    align-items: center !important;
+    text-align: left !important;
+    padding: 28px 36px !important;
+  }
+}
+
