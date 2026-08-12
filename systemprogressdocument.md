@@ -2,16 +2,26 @@
 
 **Pattern:** Living Log of Development Progress  
 **Last Updated:** August 13, 2026  
-**Status:** Beta Launch Ready — Desktop Responsive Version, Audited, SEO-Optimized, Map Picker, Logo Branding, Coverage Radius, Medical Visit Reports, Super Admin Audit Log System, Comprehensive Bilingual Language Engine, Backend Dist Directory & Standalone Server Deployment Implemented  
+**Status:** Beta Launch Ready — World-Class System Home Page UI, Desktop & Mobile Viewports, Audited, SEO-Optimized, Map Picker, Logo Branding, Coverage Radius, Medical Visit Reports, Super Admin Audit Log System, Comprehensive Bilingual Language Engine, Backend Dist Directory & Standalone Server Deployment Implemented  
 
 ---
 
 ## 1. System Overview & Architecture Implemented
 
 - **Stack:** Full MERN (MongoDB, Express.js, React + Vite, Node.js).
-- **Design Principles:** Mobile-first PWA, 3G-optimized, budget Android friendly, Nepali-first UI copy (English secondary), trust-forward badges, emergency helpline integration, **Official Standalone House-Stethoscope Icon Mark** (`/icon.png`), **Thematic Icon System** (`var(--primary)`, `var(--secondary)`, `var(--accent)`), **Full Reactive Bilingual Engine** (instant switching between Nepali & English), **Desktop & Mobile Responsive Design**.
-- **Desktop Layout ([HomePage.jsx](file:///Users/bikalpadhungana/Documents/bikalpakolab/software/gharkodoctor/frontend/src/pages/HomePage.jsx)):** 2-column desktop hero grid with 24/7 Kathmandu Valley coverage widget, 4-column desktop trust highlights grid, multi-column services grid (`grid-template-columns: repeat(auto-fill, minmax(320px, 1fr))`), and wide desktop call dispatch banner.
-- **Standalone Backend Dist & SPA Serving:** `backend/dist` folder created containing compiled frontend assets. Express `server.js` checks `path.join(__dirname, 'dist')` first (falling back to `../frontend/dist`) and handles SPA wildcard route navigation (`app.get('*')`) for single-directory server deployments on Port `5004`.
+- **Design Principles:** Mobile PWA & WebView friendly, desktop wide layout (`1200px` max-width), 3G-optimized, budget Android friendly, Nepali-first UI copy (English secondary), trust-forward badges, emergency helpline integration, **Official Standalone House-Stethoscope Icon Mark** (`/icon.png`), **Thematic Icon System** (`var(--primary)`, `var(--secondary)`, `var(--accent)`), **Full Reactive Bilingual Engine** (instant switching between Nepali & English).
+- **Desktop & Mobile UI Enhancements ([HomePage.jsx](file:///Users/bikalpadhungana/Documents/bikalpakolab/software/gharkodoctor/frontend/src/pages/HomePage.jsx) & [Navbar.jsx](file:///Users/bikalpadhungana/Documents/bikalpakolab/software/gharkodoctor/frontend/src/components/Navbar.jsx)):**
+  - **Desktop Navigation Bar:** Header contains brand logo, language switcher, user profile avatar, and desktop navigation links (**गृह/Home**, **सेवाहरू/Services**, **हाम्रा बुकिङहरू/My Bookings**, **स्वास्थ्यकर्मी दर्ता/Join as Provider**, **एडमिन प्यानल/Admin**).
+  - **Mobile View & WebView:** Sticky glass navbar, mobile bottom navigation bar (`.bottom-nav`), and floating emergency FAB button ("🚨 आपतकालीन कल").
+  - **World-Class Home Page Sections:**
+    1. Hero Section with Instant Booking Card Widget (Service + Municipality + Ward selector).
+    2. Trust & Verification Highlights (100% Verified Staff, Cash/eSewa Payment, Quick Dispatch, Valley Coverage).
+    3. Featured Services Catalog Grid with pricing and direct booking triggers.
+    4. "How GharkoDoctor Works" (४ सरल चरणमा घरमै स्वास्थ्य सेवा).
+    5. Real Patient Testimonials & 5-Star Reviews Grid from Kathmandu, Lalitpur, and Bhaktapur.
+    6. "Join as a Health Provider" Application Banner.
+    7. 24/7 Helpline & Call Dispatch Banner.
+- **Standalone Backend Dist & SPA Serving:** `backend/dist` directory containing compiled frontend assets. Express `server.js` serves static assets directly from `backend/dist` with SPA wildcard fallback (`app.get('*')`) on Port `5004`.
 
 ---
 
@@ -40,21 +50,14 @@
 
 ## 3. Frontend Implementation & Features (`/frontend`)
 
-- **Desktop Version for Home Page ([HomePage.jsx](file:///Users/bikalpadhungana/Documents/bikalpakolab/software/gharkodoctor/frontend/src/pages/HomePage.jsx)):**
-  - **Desktop Hero Grid (`.hero-desktop-grid`):** 2-column layout pairing headline & booking CTAs on the left with an interactive Kathmandu Valley Coverage Showcase Card on the right.
-  - **Trust Highlights Grid (`.trust-desktop-grid`):** 4-column desktop layout highlighting 100% verified staff, cash/eSewa payment, quick dispatch, and valley coverage.
-  - **Multi-Column Services Grid (`.services-desktop-grid`):** Responsive multi-column layout for service cards on desktop.
-  - **Call Dispatch Banner (`.cta-desktop-card`):** 2-column wide desktop banner.
+- **World-Class System Home Page ([HomePage.jsx](file:///Users/bikalpadhungana/Documents/bikalpakolab/software/gharkodoctor/frontend/src/pages/HomePage.jsx)):**
+  - Instant Home Care Booking Card widget, 4-step workflow, trust metrics, verified service catalog, patient testimonials, health provider application banner, and 24/7 hotline dispatch.
+- **Desktop & Mobile Navbar Navigation ([Navbar.jsx](file:///Users/bikalpadhungana/Documents/bikalpakolab/software/gharkodoctor/frontend/src/components/Navbar.jsx)):**
+  - Added desktop link bar for large screens and seamless mobile view/webview experience.
 - **Bilingual Engine Audit & Fix:**
   - Audited [AdminDashboardPage.jsx](file:///Users/bikalpadhungana/Documents/bikalpakolab/software/gharkodoctor/frontend/src/pages/AdminDashboardPage.jsx), [BookingDetailPage.jsx](file:///Users/bikalpadhungana/Documents/bikalpakolab/software/gharkodoctor/frontend/src/pages/BookingDetailPage.jsx), and [BookVisitPage.jsx](file:///Users/bikalpadhungana/Documents/bikalpakolab/software/gharkodoctor/frontend/src/pages/BookVisitPage.jsx).
-  - All tab titles, headers, labels, placeholders, card statistics, action buttons, and status indicators react dynamically to the header language toggle (नेपाली / English).
-- **Service Provider Profile Image Upload Fix:**
-  - Added `profileImage` payload propagation in [ProviderProfilePage.jsx](file:///Users/bikalpadhungana/Documents/bikalpakolab/software/gharkodoctor/frontend/src/pages/ProviderProfilePage.jsx).
 - **Super Admin Control Center ([AdminDashboardPage.jsx](file:///Users/bikalpadhungana/Documents/bikalpakolab/software/gharkodoctor/frontend/src/pages/AdminDashboardPage.jsx)):**
-  - **Payment Verification:** Super admins can verify payment status (`pending` ↔ `paid` / `refunded`) for each visit booking.
-  - **User & Admin Role Management:** Super admins can make existing users/providers an `admin` or `superadmin` or set dispatchers.
-  - **Audit & System Log Stream:** Live view of administrative action traces, payment verification timestamps, and system events.
-  - **Medical Visit Report & Document Inspection:** Super admins can inspect full booking details including vital signs, task checklist photos, and uploaded lab/prescription files.
+  - Payment Verification (`pending` ↔ `paid` / `refunded`), User Role Delegation, Audit & System Log Stream, Medical Visit Report File Inspection.
 
 ---
 

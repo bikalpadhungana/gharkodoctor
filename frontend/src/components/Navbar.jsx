@@ -33,6 +33,29 @@ export const Navbar = () => {
           </div>
         </Link>
 
+        {/* Desktop Navigation Links */}
+        <div className="desktop-nav-links">
+          <Link to="/" className="nav-link-desktop">
+            {lang === 'ne' ? 'गृह (Home)' : 'Home'}
+          </Link>
+          <Link to="/services" className="nav-link-desktop">
+            {lang === 'ne' ? 'सेवाहरू (Services)' : 'Services'}
+          </Link>
+          {isAuthenticated && (
+            <Link to="/my-bookings" className="nav-link-desktop">
+              {lang === 'ne' ? 'हाम्रा बुकिङहरू' : 'My Bookings'}
+            </Link>
+          )}
+          <Link to="/register-provider" className="nav-link-desktop" style={{ color: 'var(--primary)', fontWeight: 700 }}>
+            {lang === 'ne' ? 'स्वास्थ्यकर्मी दर्ता' : 'Join as Provider'}
+          </Link>
+          {(user?.role === 'admin' || user?.role === 'superadmin' || user?.role === 'dispatcher') && (
+            <Link to="/admin/dashboard" className="nav-link-desktop" style={{ color: 'var(--accent)', fontWeight: 700 }}>
+              🛡️ {lang === 'ne' ? 'एडमिन प्यानल' : 'Admin Panel'}
+            </Link>
+          )}
+        </div>
+
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           {/* Language Switcher */}
           <button
