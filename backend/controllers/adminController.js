@@ -404,3 +404,174 @@ exports.updateServiceType = async (req, res, next) => {
     next(error);
   }
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FlapMain IoT & Sensor Telemetry Integration Proxy Controller Endpoints
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Default Constants
+const DEFAULT_FLAPMAIN_SERVER = process.env.FLAPMAIN_SERVER || 'http://main.esainnovation.com/api';
+const DEFAULT_PARTNER_KEY = process.env.FLAP_PARTNER_KEY || 'flap_partner_bc1da6a0907e20fe8d917dec21653ca97994386864169ac1';
+const DEFAULT_DEVICE_KEY = process.env.FLAPMAIN_DEVICE_KEY || 'flap_dev_b31e42eb7b2dd794f18e8d4f4434c33cdc78901c4e15b332';
+
+// Helper for fetch with fallback
+const flapMainFetch = async (targetUrl, options = {}) => {
+  const headers = {
+    'Content-Type': 'application/json',
+    'x-partner-key': options.partnerKey || DEFAULT_PARTNER_KEY,
+    'X-Device-Key': options.deviceKey || DEFAULT_DEVICE_KEY,
+    ...options.headers
+  };
+
+  if (options.token) {
+    headers['Authorization'] = `Bearer ${options.token}`;
+  }
+
+  const fetchOptions = {
+    method: options.method || 'GET',
+    headers
+  };
+
+  if (options.body) {
+    fetchOptions.body = JSON.stringify(options.body);
+  }
+
+  const response = await fetch(targetUrl, fetchOptions);
+  const data = await response.json().catch(() => ({ message: 'Raw non-JSON response received' }));
+  return { status: response.status, ok: response.ok, data };
+};
+
+// @desc    Trigger Scale Measurement Session on FlapMain
+// @route   POST /api/admin/telemetry/trigger
+exports.triggerFlapMainDevice = async (req, res, next) => {
+  try {
+    const {
+      server_url = DEFAULT_FLAPMAIN_SERVER,
+      device_id = 'flap-weight-fqs5',
+      device_key = DEFAULT_DEVICE_KEY,
+      partner_key = DEFAULT_PARTNER_KEY,
+      external_user_id = 'PATIENT-1042',
+      user_name = 'Bikalpa Dhungana',
+      callback_url = 'https://www.gharkodoctor.com/api/v1/webhooks/scale-readings',
+      notes = 'Triggered from GharkoDoctor Admin Control Center',
+      jwt_token = ''
+    } = req.body;
+
+    const cleanServerUrl = server_url.replace(/\/+$/, '');
+    const encodedDeviceId = encodeURIComponent(device_id);
+    const targetUrl = `${cleanServerUrl}/v1/devices/${encodedDeviceId}/trigger`;
+
+    const payload = {
+      device_id,
+      external_user_id,
+      user_name,
+      callback_url,
+      notes
+    };
+
+    const result = await flapMainFetch(targetUrl, {
+      method: 'POST',
+      body: payload,
+      deviceKey: device_key,
+      partnerKey: partner_key,
+      token: jwt_token
+    });
+
+    await logAudit('FLAPMAIN_SCALE_TRIGGERED', req, {
+      type: 'IoTDevice',
+      id: device_id,
+      label: `Scale Trigger (${device_id})`
+    }, {
+      targetUrl,
+      external_user_id,
+      user_name,
+      status: result.status,
+      response: result.data
+    });
+
+    res.status(result.status).json({
+      success: result.ok,
+      targetUrl,
+      result: result.data
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Poll Device Trigger Status & Reading on FlapMain
+// @route   POST /api/admin/telemetry/status
+exports.getFlapMainTriggerStatus = async (req, res, next) => {
+  try {
+    const {
+      server_url = DEFAULT_FLAPMAIN_SERVER,
+      device_id = 'flap-weight-fqs5',
+      device_key = DEFAULT_DEVICE_KEY,
+      partner_key = DEFAULT_PARTNER_KEY,
+      jwt_token = ''
+    } = req.body;
+
+    const cleanServerUrl = server_url.replace(/\/+$/, '');
+    const encodedDeviceId = encodeURIComponent(device_id);
+    const targetUrl = `${cleanServerUrl}/v1/devices/${encodedDeviceId}/trigger-status`;
+
+    const result = await flapMainFetch(targetUrl, {
+      method: 'GET',
+      deviceKey: device_key,
+      partnerKey: partner_key,
+      token: jwt_token
+    });
+
+    res.status(result.status).json({
+      success: result.ok,
+      targetUrl,
+      result: result.data
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Lookup NFC Tag / Cardholder on FlapMain
+// @route   POST /api/admin/telemetry/tag-lookup
+exports.lookupFlapMainTag = async (req, res, next) => {
+  try {
+    const {
+      server_url = DEFAULT_FLAPMAIN_SERVER,
+      uid = '04:A1:B2:C3:D4:E5:F6',
+      device_key = DEFAULT_DEVICE_KEY,
+      partner_key = DEFAULT_PARTNER_KEY,
+      jwt_token = ''
+    } = req.body;
+
+    const cleanServerUrl = server_url.replace(/\/+$/, '');
+    const targetUrl = `${cleanServerUrl}/tags/lookup`;
+
+    const result = await flapMainFetch(targetUrl, {
+      method: 'POST',
+      body: { uid },
+      deviceKey: device_key,
+      partnerKey: partner_key,
+      token: jwt_token
+    });
+
+    await logAudit('FLAPMAIN_TAG_LOOKUP', req, {
+      type: 'NFCCard',
+      id: uid,
+      label: `NFC Tag (${uid})`
+    }, {
+      targetUrl,
+      uid,
+      status: result.status,
+      response: result.data
+    });
+
+    res.status(result.status).json({
+      success: result.ok,
+      targetUrl,
+      result: result.data
+    });
+  } catch (error) {
+    next(error);
+  }
+};

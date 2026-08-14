@@ -13,7 +13,10 @@ const {
   verifyPayment,
   getUsersAndAdmins,
   updateUserRole,
-  getAuditLogs
+  getAuditLogs,
+  triggerFlapMainDevice,
+  getFlapMainTriggerStatus,
+  lookupFlapMainTag
 } = require('../controllers/adminController');
 const { protect, authorize } = require('../middleware/auth');
 
@@ -33,5 +36,10 @@ router.get('/audit-logs', getAuditLogs);
 router.get('/service-types', getServiceTypes);
 router.post('/service-types', createServiceType);
 router.patch('/service-types/:id', updateServiceType);
+
+// FlapMain IoT & Sensor Telemetry Proxy Routes
+router.post('/telemetry/trigger', triggerFlapMainDevice);
+router.post('/telemetry/status', getFlapMainTriggerStatus);
+router.post('/telemetry/tag-lookup', lookupFlapMainTag);
 
 module.exports = router;

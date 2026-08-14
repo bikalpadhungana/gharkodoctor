@@ -3,7 +3,8 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { StatusBadge } from '../components/StatusBadge';
 import { LocationPickerModal } from '../components/LocationPickerModal';
-import { ShieldCheck, Users, Calendar, Check, X, PhoneCall, RefreshCw, AlertCircle, PlusCircle, Map, CreditCard, UserCheck, FileText, Activity, ShieldAlert, History, Lock } from 'lucide-react';
+import { FlapMainTestPanel } from '../components/FlapMainTestPanel';
+import { ShieldCheck, Users, Calendar, Check, X, PhoneCall, RefreshCw, AlertCircle, PlusCircle, Map, CreditCard, UserCheck, FileText, Activity, ShieldAlert, History, Lock, Radio } from 'lucide-react';
 
 export const AdminDashboardPage = () => {
   const { lang, token, user: currentUser } = useAuth();
@@ -226,6 +227,15 @@ export const AdminDashboardPage = () => {
         >
           <PhoneCall size={16} />
           <span>{lang === 'ne' ? 'फोन बुकिङ डिस्प्याच' : 'Phone Dispatch'}</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('telemetry')}
+          className={`btn ${activeTab === 'telemetry' ? 'btn-primary' : 'btn-outline'}`}
+          style={{ width: 'auto', padding: '8px 14px', fontSize: '0.85rem' }}
+        >
+          <Radio size={16} />
+          <span>{lang === 'ne' ? 'FlapMain उपकरण परीक्षण' : 'FlapMain IoT Test'}</span>
         </button>
 
         {isSuperAdmin && (

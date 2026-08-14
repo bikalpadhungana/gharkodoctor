@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+const API_BASE_URL = 'http://localhost:5004/api';
 
 const getHeaders = (token) => {
   const headers = {
@@ -248,6 +248,42 @@ export const api = {
       method: 'POST',
       headers: getHeaders(token),
       body: JSON.stringify(data),
+    });
+    return res.json();
+  },
+
+  updateServiceType: async (id, data, token) => {
+    const res = await fetch(`${API_BASE_URL}/admin/service-types/${id}`, {
+      method: 'PATCH',
+      headers: getHeaders(token),
+      body: JSON.stringify(data),
+    });
+    return res.json();
+  },
+
+  triggerFlapMainDevice: async (payload, token) => {
+    const res = await fetch(`${API_BASE_URL}/admin/telemetry/trigger`, {
+      method: 'POST',
+      headers: getHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    return res.json();
+  },
+
+  getFlapMainTriggerStatus: async (payload, token) => {
+    const res = await fetch(`${API_BASE_URL}/admin/telemetry/status`, {
+      method: 'POST',
+      headers: getHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    return res.json();
+  },
+
+  lookupFlapMainTag: async (payload, token) => {
+    const res = await fetch(`${API_BASE_URL}/admin/telemetry/tag-lookup`, {
+      method: 'POST',
+      headers: getHeaders(token),
+      body: JSON.stringify(payload),
     });
     return res.json();
   },
