@@ -693,6 +693,11 @@ export const AdminDashboardPage = () => {
         </div>
       )}
 
+      {/* Tab 6: FlapMain IoT & Sensor Telemetry Test Suite */}
+      {activeTab === 'telemetry' && (
+        <FlapMainTestPanel />
+      )}
+
       <LocationPickerModal
         isOpen={isMapOpen}
         onClose={() => setIsMapOpen(false)}
