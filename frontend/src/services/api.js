@@ -1,305 +1,119 @@
-const API_BASE_URL = 'http://localhost:5004/api';
+import { API_BASE_URL } from '../config';
 
-const getHeaders = (token) => {
-  const headers = {
-    'Content-Type': 'application/json',
-  };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
+const REQUEST_TIMEOUT_MS = 20000; // generous for 3G
+
+// Listeners notified when the server rejects our token (expired/revoked) so the app can log out.
+const unauthorizedListeners = new Set();
+export const onUnauthorized = (fn) => {
+  unauthorizedListeners.add(fn);
+  return () => unauthorizedListeners.delete(fn);
+};
+
+const NETWORK_ERROR = {
+  success: false,
+  networkError: true,
+  message: 'इन्टरनेट जडान जाँच गर्नुहोस् (Network error — check your connection)'
+};
+
+// Single fetch wrapper: JSON in/out, auth header, timeout, and consistent { success, message } errors.
+// Always resolves (never throws) so callers can just check `res.success`.
+const request = async (path, { method = 'GET', body, token } = {}) => {
+  const headers = {};
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  let res;
+  try {
+    res = await fetch(`${API_BASE_URL}${path}`, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+    });
+  } catch {
+    return NETWORK_ERROR;
   }
-  return headers;
+
+  let data;
+  try {
+    data = await res.json();
+  } catch {
+    data = { success: false, message: `Server error (${res.status})` };
+  }
+
+  if (res.status === 401 && token) {
+    unauthorizedListeners.forEach(fn => fn());
+  }
+  if (!res.ok && data.success === undefined) data.success = false;
+  return data;
+};
+
+const qs = (params) => {
+  const clean = Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== ''));
+  const s = new URLSearchParams(clean).toString();
+  return s ? `?${s}` : '';
 };
 
 export const api = {
   // Auth
-  registerPatient: async (data) => {
-    const res = await fetch(`${API_BASE_URL}/auth/register/patient`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(data),
-    });
-    return res.json();
-  },
-
-  registerProvider: async (data) => {
-    const res = await fetch(`${API_BASE_URL}/auth/register/provider`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(data),
-    });
-    return res.json();
-  },
-
-  login: async (credentials) => {
-    const res = await fetch(`${API_BASE_URL}/auth/login`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(credentials),
-    });
-    return res.json();
-  },
-
-  adminLogin: async (credentials) => {
-    const res = await fetch(`${API_BASE_URL}/auth/admin/login`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(credentials),
-    });
-    return res.json();
-  },
-
-  getMe: async (token) => {
-    const res = await fetch(`${API_BASE_URL}/auth/me`, {
-      headers: getHeaders(token),
-    });
-    return res.json();
-  },
+  registerPatient: (data) => request('/auth/register/patient', { method: 'POST', body: data }),
+  registerProvider: (data) => request('/auth/register/provider', { method: 'POST', body: data }),
+  login: (credentials) => request('/auth/login', { method: 'POST', body: credentials }),
+  adminLogin: (credentials) => request('/auth/admin/login', { method: 'POST', body: credentials }),
+  getMe: (token) => request('/auth/me', { token }),
+  updatePatientProfile: (data, token) => request('/auth/profile', { method: 'PATCH', body: data, token }),
 
   // Service Types
-  getServices: async () => {
-    const res = await fetch(`${API_BASE_URL}/services`);
-    return res.json();
-  },
-
-  getService: async (id) => {
-    const res = await fetch(`${API_BASE_URL}/services/${id}`);
-    return res.json();
-  },
+  getServices: () => request('/services'),
+  getService: (id) => request(`/services/${id}`),
 
   // Providers
-  getAvailableProviders: async (query = {}) => {
-    const params = new URLSearchParams(query).toString();
-    const res = await fetch(`${API_BASE_URL}/providers/available?${params}`);
-    return res.json();
-  },
-
-  getProvider: async (id) => {
-    const res = await fetch(`${API_BASE_URL}/providers/${id}`);
-    return res.json();
-  },
-
-  updateProviderProfile: async (data, token) => {
-    const res = await fetch(`${API_BASE_URL}/providers/profile`, {
-      method: 'PATCH',
-      headers: getHeaders(token),
-      body: JSON.stringify(data),
-    });
-    return res.json();
-  },
-
-  updateProviderAvailability: async (data, token) => {
-    const res = await fetch(`${API_BASE_URL}/providers/availability`, {
-      method: 'PATCH',
-      headers: getHeaders(token),
-      body: JSON.stringify(data),
-    });
-    return res.json();
-  },
+  getAvailableProviders: (query = {}) => request(`/providers/available${qs(query)}`),
+  getProvider: (id) => request(`/providers/${id}`),
+  updateProviderProfile: (data, token) => request('/providers/profile', { method: 'PATCH', body: data, token }),
+  updateProviderAvailability: (data, token) => request('/providers/availability', { method: 'PATCH', body: data, token }),
 
   // Bookings
-  createBooking: async (data, token) => {
-    const res = await fetch(`${API_BASE_URL}/bookings`, {
-      method: 'POST',
-      headers: getHeaders(token),
-      body: JSON.stringify(data),
-    });
-    return res.json();
+  createBooking: (data, token) => request('/bookings', { method: 'POST', body: data, token }),
+  getMyBookings: (token) => request('/bookings/my', { token }),
+  getProviderBookings: (token) => request('/bookings/provider/my', { token }),
+  getBooking: (id, token) => request(`/bookings/${id}`, { token }),
+  updateBookingStatus: (id, status, cancellationReason = '', token = '', visitReport = null) => {
+    const body = { status, cancellationReason };
+    if (visitReport) body.visitReport = visitReport;
+    return request(`/bookings/${id}/status`, { method: 'PATCH', body, token });
   },
-
-  getMyBookings: async (token) => {
-    const res = await fetch(`${API_BASE_URL}/bookings/my`, {
-      headers: getHeaders(token),
-    });
-    return res.json();
-  },
-
-  getProviderBookings: async (token) => {
-    const res = await fetch(`${API_BASE_URL}/bookings/provider/my`, {
-      headers: getHeaders(token),
-    });
-    return res.json();
-  },
-
-  getBooking: async (id, token) => {
-    const res = await fetch(`${API_BASE_URL}/bookings/${id}`, {
-      headers: getHeaders(token),
-    });
-    return res.json();
-  },
-
-  updatePatientProfile: async (data, token) => {
-    const res = await fetch(`${API_BASE_URL}/auth/profile`, {
-      method: 'PATCH',
-      headers: getHeaders(token),
-      body: JSON.stringify(data),
-    });
-    return res.json();
-  },
-
-  updateBookingStatus: async (id, status, cancellationReason = '', token = '', visitReport = null) => {
-    const payload = { status, cancellationReason };
-    if (visitReport) payload.visitReport = visitReport;
-
-    const res = await fetch(`${API_BASE_URL}/bookings/${id}/status`, {
-      method: 'PATCH',
-      headers: getHeaders(token),
-      body: JSON.stringify(payload),
-    });
-    return res.json();
-  },
-
-  assignProvider: async (bookingId, providerId, token) => {
-    const res = await fetch(`${API_BASE_URL}/bookings/${bookingId}/assign`, {
-      method: 'PATCH',
-      headers: getHeaders(token),
-      body: JSON.stringify({ providerId }),
-    });
-    return res.json();
-  },
+  assignProvider: (bookingId, providerId, token) =>
+    request(`/bookings/${bookingId}/assign`, { method: 'PATCH', body: { providerId }, token }),
 
   // Admin
-  getAdminStats: async (token) => {
-    const res = await fetch(`${API_BASE_URL}/admin/dashboard/stats`, {
-      headers: getHeaders(token),
-    });
-    return res.json();
-  },
-
-  getPendingProviders: async (token) => {
-    const res = await fetch(`${API_BASE_URL}/admin/providers/pending`, {
-      headers: getHeaders(token),
-    });
-    return res.json();
-  },
-
-  getAllProviders: async (token, status = '') => {
-    const res = await fetch(`${API_BASE_URL}/admin/providers?status=${status}`, {
-      headers: getHeaders(token),
-    });
-    return res.json();
-  },
-
-  verifyProvider: async (id, status, notes, token) => {
-    const res = await fetch(`${API_BASE_URL}/admin/providers/${id}/verify`, {
+  getAdminStats: (token) => request('/admin/dashboard/stats', { token }),
+  getPendingProviders: (token) => request('/admin/providers/pending', { token }),
+  getAllProviders: (token, status = '') => request(`/admin/providers${qs({ status })}`, { token }),
+  verifyProvider: (id, status, notes, token) =>
+    request(`/admin/providers/${id}/verify`, { method: 'PATCH', body: { status, notes }, token }),
+  getAllBookings: (token, status = '') => request(`/admin/bookings${qs({ status })}`, { token }),
+  createPhoneInBooking: (data, token) => request('/admin/bookings/phone-in', { method: 'POST', body: data, token }),
+  verifyPayment: (bookingId, paymentStatus, paymentMethod = 'cash', amount = 0, notes = '', token) =>
+    request(`/admin/bookings/${bookingId}/payment`, {
       method: 'PATCH',
-      headers: getHeaders(token),
-      body: JSON.stringify({ status, notes }),
-    });
-    return res.json();
-  },
+      body: { paymentStatus, paymentMethod, amount, notes },
+      token
+    }),
+  getUsersAndAdmins: (token) => request('/admin/users', { token }),
+  updateUserRole: (userId, role, userType, token) =>
+    request(`/admin/users/${userId}/role`, { method: 'PATCH', body: { role, userType }, token }),
+  getAuditLogs: (token) => request('/admin/audit-logs', { token }),
+  getAdminServiceTypes: (token) => request('/admin/service-types', { token }),
+  createServiceType: (data, token) => request('/admin/service-types', { method: 'POST', body: data, token }),
+  updateServiceType: (id, data, token) => request(`/admin/service-types/${id}`, { method: 'PATCH', body: data, token }),
 
-  getAllBookings: async (token, status = '') => {
-    const res = await fetch(`${API_BASE_URL}/admin/bookings?status=${status}`, {
-      headers: getHeaders(token),
-    });
-    return res.json();
-  },
-
-  createPhoneInBooking: async (data, token) => {
-    const res = await fetch(`${API_BASE_URL}/admin/bookings/phone-in`, {
-      method: 'POST',
-      headers: getHeaders(token),
-      body: JSON.stringify(data),
-    });
-    return res.json();
-  },
-
-  verifyPayment: async (bookingId, paymentStatus, paymentMethod = 'cash', amount = 0, notes = '', token) => {
-    const res = await fetch(`${API_BASE_URL}/admin/bookings/${bookingId}/payment`, {
-      method: 'PATCH',
-      headers: getHeaders(token),
-      body: JSON.stringify({ paymentStatus, paymentMethod, amount, notes }),
-    });
-    return res.json();
-  },
-
-  getUsersAndAdmins: async (token) => {
-    const res = await fetch(`${API_BASE_URL}/admin/users`, {
-      headers: getHeaders(token),
-    });
-    return res.json();
-  },
-
-  updateUserRole: async (userId, role, userType, token) => {
-    const res = await fetch(`${API_BASE_URL}/admin/users/${userId}/role`, {
-      method: 'PATCH',
-      headers: getHeaders(token),
-      body: JSON.stringify({ role, userType }),
-    });
-    return res.json();
-  },
-
-  getAuditLogs: async (token) => {
-    const res = await fetch(`${API_BASE_URL}/admin/audit-logs`, {
-      headers: getHeaders(token),
-    });
-    return res.json();
-  },
-
-  getAdminServiceTypes: async (token) => {
-    const res = await fetch(`${API_BASE_URL}/admin/service-types`, {
-      headers: getHeaders(token),
-    });
-    return res.json();
-  },
-
-  createServiceType: async (data, token) => {
-    const res = await fetch(`${API_BASE_URL}/admin/service-types`, {
-      method: 'POST',
-      headers: getHeaders(token),
-      body: JSON.stringify(data),
-    });
-    return res.json();
-  },
-
-  updateServiceType: async (id, data, token) => {
-    const res = await fetch(`${API_BASE_URL}/admin/service-types/${id}`, {
-      method: 'PATCH',
-      headers: getHeaders(token),
-      body: JSON.stringify(data),
-    });
-    return res.json();
-  },
-
-  triggerFlapMainDevice: async (payload, token) => {
-    const res = await fetch(`${API_BASE_URL}/admin/telemetry/trigger`, {
-      method: 'POST',
-      headers: getHeaders(token),
-      body: JSON.stringify(payload),
-    });
-    return res.json();
-  },
-
-  getFlapMainTriggerStatus: async (payload, token) => {
-    const res = await fetch(`${API_BASE_URL}/admin/telemetry/status`, {
-      method: 'POST',
-      headers: getHeaders(token),
-      body: JSON.stringify(payload),
-    });
-    return res.json();
-  },
-
-  lookupFlapMainTag: async (payload, token) => {
-    const res = await fetch(`${API_BASE_URL}/admin/telemetry/tag-lookup`, {
-      method: 'POST',
-      headers: getHeaders(token),
-      body: JSON.stringify(payload),
-    });
-    return res.json();
-  },
+  // FlapMain IoT proxy (admin only)
+  triggerFlapMainDevice: (payload, token) => request('/admin/telemetry/trigger', { method: 'POST', body: payload, token }),
+  getFlapMainTriggerStatus: (payload, token) => request('/admin/telemetry/status', { method: 'POST', body: payload, token }),
+  lookupFlapMainTag: (payload, token) => request('/admin/telemetry/tag-lookup', { method: 'POST', body: payload, token }),
 
   // Reviews
-  createReview: async (data, token) => {
-    const res = await fetch(`${API_BASE_URL}/reviews`, {
-      method: 'POST',
-      headers: getHeaders(token),
-      body: JSON.stringify(data),
-    });
-    return res.json();
-  },
-
-  getProviderReviews: async (providerId) => {
-    const res = await fetch(`${API_BASE_URL}/reviews/provider/${providerId}`);
-    return res.json();
-  }
+  createReview: (data, token) => request('/reviews', { method: 'POST', body: data, token }),
+  getProviderReviews: (providerId) => request(`/reviews/provider/${providerId}`)
 };

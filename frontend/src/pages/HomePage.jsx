@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { HOTLINE, HOTLINE_DISPLAY } from '../config';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
@@ -141,13 +142,13 @@ export const HomePage = () => {
               <ArrowRight size={18} />
             </RouterLink>
             <a
-              href="tel:9800000000"
+              href={`tel:${HOTLINE}`}
               className="btn btn-outline"
               style={{ color: 'white', borderColor: 'white', padding: '14px 20px', width: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}
               title="Call GharkoDoctor Hotline"
             >
               <Phone size={18} />
-              <span>9800000000</span>
+              <span>{HOTLINE_DISPLAY}</span>
             </a>
           </div>
 
@@ -439,11 +440,11 @@ export const HomePage = () => {
           </div>
 
           <a
-            href="tel:9800000000"
+            href={`tel:${HOTLINE}`}
             className="btn"
             style={{ background: 'white', color: 'var(--primary-hover)', width: 'auto', padding: '12px 28px', fontWeight: 800, fontSize: '1rem', boxShadow: 'var(--shadow-md)' }}
           >
-            📞 9800000000 मा कल गर्नुहोस्
+            📞 {HOTLINE_DISPLAY} {lang === 'ne' ? 'मा कल गर्नुहोस्' : '— Call now'}
           </a>
         </div>
       </section>

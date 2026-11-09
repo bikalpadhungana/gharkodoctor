@@ -18,28 +18,31 @@ const {
   getFlapMainTriggerStatus,
   lookupFlapMainTag
 } = require('../controllers/adminController');
-const { protect, authorize } = require('../middleware/auth');
+const { protect, authorize, STAFF_ROLES, ADMIN_ROLES } = require('../middleware/auth');
 
-// All admin routes require admin/superadmin/dispatcher auth
-router.use(protect, authorize('admin', 'superadmin', 'dispatcher'));
+// All admin routes require staff auth.
+router.use(protect, authorize(...STAFF_ROLES));
+// Dispatchers take phone bookings, assign providers and confirm cash payments.
+// Trust decisions (provider verification), the service registry, audit and IoT tooling are admin-only.
+const adminOnly = authorize(...ADMIN_ROLES);
 
 router.get('/dashboard/stats', getDashboardStats);
 router.get('/providers/pending', getPendingProviders);
 router.get('/providers', getAllProviders);
-router.patch('/providers/:id/verify', verifyProvider);
+router.patch('/providers/:id/verify', adminOnly, verifyProvider);
 router.get('/bookings', getAllBookings);
 router.post('/bookings/phone-in', createPhoneInBooking);
 router.patch('/bookings/:id/payment', verifyPayment);
 router.get('/users', getUsersAndAdmins);
 router.patch('/users/:id/role', authorize('superadmin'), updateUserRole);
-router.get('/audit-logs', getAuditLogs);
+router.get('/audit-logs', adminOnly, getAuditLogs);
 router.get('/service-types', getServiceTypes);
-router.post('/service-types', createServiceType);
-router.patch('/service-types/:id', updateServiceType);
+router.post('/service-types', adminOnly, createServiceType);
+router.patch('/service-types/:id', adminOnly, updateServiceType);
 
 // FlapMain IoT & Sensor Telemetry Proxy Routes
-router.post('/telemetry/trigger', triggerFlapMainDevice);
-router.post('/telemetry/status', getFlapMainTriggerStatus);
-router.post('/telemetry/tag-lookup', lookupFlapMainTag);
+router.post('/telemetry/trigger', adminOnly, triggerFlapMainDevice);
+router.post('/telemetry/status', adminOnly, getFlapMainTriggerStatus);
+router.post('/telemetry/tag-lookup', adminOnly, lookupFlapMainTag);
 
 module.exports = router;

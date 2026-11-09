@@ -30,9 +30,17 @@ const errorHandler = (err, req, res, next) => {
     });
   }
 
-  res.status(error.statusCode || 500).json({
+  // Body too large (e.g. oversized visit-report photos)
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({ success: false, message: 'फाइल धेरै ठूलो छ' }); // File too large
+  }
+
+  const status = error.statusCode || 500;
+  // Don't leak internal error details (stack-ish messages, DB errors) to clients in production.
+  const hide = status >= 500 && process.env.NODE_ENV === 'production';
+  res.status(status).json({
     success: false,
-    message: error.message || 'सर्भर त्रुटि' // Server error
+    message: hide ? 'सर्भर त्रुटि' : (error.message || 'सर्भर त्रुटि') // Server error
   });
 };
 

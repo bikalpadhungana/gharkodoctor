@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { homePathForRole } from '../config';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { Phone, Lock, LogIn, AlertCircle } from 'lucide-react';
@@ -7,6 +8,7 @@ import { Phone, Lock, LogIn, AlertCircle } from 'lucide-react';
 export const LoginPage = () => {
   const { lang, loginUser } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
@@ -30,13 +32,10 @@ export const LoginPage = () => {
 
       if (res.success) {
         loginUser(res.user, res.token);
-        if (res.user.role === 'admin' || res.user.role === 'dispatcher') {
-          navigate('/admin/dashboard');
-        } else if (res.user.role === 'provider') {
-          navigate('/provider/dashboard');
-        } else {
-          navigate('/');
-        }
+        // Return patients to where they were going (e.g. /book?service=…), otherwise the role's home.
+        const from = location.state?.from;
+        const target = res.user.role === 'patient' && from ? from : homePathForRole(res.user.role);
+        navigate(target, { replace: true });
       } else {
         setError(res.message || 'लगइन असफल भयो');
       }

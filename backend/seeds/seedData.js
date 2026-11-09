@@ -14,13 +14,19 @@ const seedData = async () => {
     }
     console.log('✅ Connected to MongoDB for seeding');
 
+    // Refuse to create admins with a guessable default password.
+    if (!process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD === 'admin123456' || process.env.ADMIN_PASSWORD.length < 10) {
+      console.error('❌ Set a strong ADMIN_PASSWORD (10+ chars, not the old default) in backend/.env before seeding.');
+      process.exit(1);
+    }
+
     // Seed admin
     const existingAdmin = await Admin.findOne({ email: process.env.ADMIN_EMAIL || 'admin@gharkodoctor.com' });
     if (!existingAdmin) {
       await Admin.create({
         name: 'GharkoDoctor Admin',
         email: process.env.ADMIN_EMAIL || 'admin@gharkodoctor.com',
-        password: process.env.ADMIN_PASSWORD || 'admin123456',
+        password: process.env.ADMIN_PASSWORD,
         role: 'admin'
       });
       console.log('✅ Admin account created');
@@ -32,10 +38,10 @@ const seedData = async () => {
       await Admin.create({
         name: 'Super Admin',
         email: 'superadmin@gharkodoctor.com',
-        password: process.env.ADMIN_PASSWORD || 'admin123456',
+        password: process.env.ADMIN_PASSWORD,
         role: 'superadmin'
       });
-      console.log('✅ Super Admin account created (superadmin@gharkodoctor.com / admin123456)');
+      console.log('✅ Super Admin account created (superadmin@gharkodoctor.com)');
     }
 
     // Seed Phase 1 service types

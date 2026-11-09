@@ -3,12 +3,12 @@ import { StatusBadge } from './StatusBadge';
 import { Star, MapPin, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-export const ProviderCard = ({ provider, onSelect }) => {
+export const ProviderCard = ({ provider, onSelect, selected = false }) => {
   const { lang } = useAuth();
   const categoryTitle = provider.category?.displayName?.[lang] || provider.category?.displayName?.ne || '';
 
   return (
-    <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+    <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '12px', ...(selected ? { outline: '2px solid var(--primary)', background: 'var(--primary-light)' } : {}) }}>
       <div style={{ display: 'flex', gap: '12px' }}>
         <div
           style={{
@@ -24,7 +24,7 @@ export const ProviderCard = ({ provider, onSelect }) => {
             flexShrink: 0
           }}
         >
-          {provider.name.charAt(0)}
+          {provider.name?.charAt(0)}
         </div>
 
         <div style={{ flex: 1 }}>
@@ -70,11 +70,15 @@ export const ProviderCard = ({ provider, onSelect }) => {
 
       {onSelect && (
         <button
+          type="button"
           onClick={() => onSelect(provider)}
-          className="btn btn-primary"
+          className={`btn ${selected ? 'btn-outline' : 'btn-primary'}`}
+          aria-pressed={selected}
           style={{ padding: '8px 14px', fontSize: '0.85rem' }}
         >
-          {lang === 'ne' ? 'यो प्रदायक छान्नुहोस्' : 'Select Provider'}
+          {selected
+            ? (lang === 'ne' ? '✓ छानिएको — हटाउन थिच्नुहोस्' : '✓ Selected — tap to remove')
+            : (lang === 'ne' ? 'यो प्रदायक छान्नुहोस्' : 'Select Provider')}
         </button>
       )}
     </div>

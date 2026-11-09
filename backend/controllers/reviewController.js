@@ -20,6 +20,15 @@ exports.createReview = async (req, res, next) => {
       return res.status(403).json({ success: false, message: 'पहुँच अस्वीकृत' });
     }
 
+    if (!booking.provider) {
+      return res.status(400).json({ success: false, message: 'यो बुकिङमा प्रदायक छैन' });
+    }
+
+    const numericRating = Number(rating);
+    if (!Number.isInteger(numericRating) || numericRating < 1 || numericRating > 5) {
+      return res.status(400).json({ success: false, message: 'रेटिङ १ देखि ५ सम्म हुनुपर्छ' });
+    }
+
     // Check if review already exists
     const existingReview = await Review.findOne({ booking: bookingId });
     if (existingReview) {
@@ -30,8 +39,8 @@ exports.createReview = async (req, res, next) => {
       booking: bookingId,
       patient: req.user._id,
       provider: booking.provider,
-      rating,
-      comment
+      rating: numericRating,
+      comment: (comment || '').toString().slice(0, 500)
     });
 
     res.status(201).json({ success: true, review });
@@ -46,7 +55,8 @@ exports.getProviderReviews = async (req, res, next) => {
   try {
     const reviews = await Review.find({ provider: req.params.id })
       .populate('patient', 'name')
-      .sort('-createdAt');
+      .sort('-createdAt')
+      .limit(50);
 
     res.json({ success: true, count: reviews.length, reviews });
   } catch (error) {

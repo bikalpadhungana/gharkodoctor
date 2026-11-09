@@ -5,8 +5,6 @@ const { generateToken } = require('../middleware/auth');
 
 // @desc    Register a patient
 // @route   POST /api/auth/register/patient
-// @desc    Register a patient
-// @route   POST /api/auth/register/patient
 exports.registerPatient = async (req, res, next) => {
   try {
     const { name, phone, password, address, ward, municipality } = req.body;
@@ -15,7 +13,17 @@ exports.registerPatient = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'नाम, फोन नम्बर र पासवर्ड आवश्यक छ' });
     }
 
+    if (password.length < 6) {
+      return res.status(400).json({ success: false, message: 'पासवर्ड कम्तिमा ६ अक्षरको हुनुपर्छ' });
+    }
+
     const cleanPhone = phone.toString().trim().replace(/[\s-]/g, '');
+
+    // One phone = one identity across roles; login searches patients first, so a duplicate
+    // provider phone would be unreachable.
+    if (await Provider.exists({ phone: cleanPhone })) {
+      return res.status(400).json({ success: false, message: 'यो फोन नम्बर स्वास्थ्यकर्मीको रूपमा दर्ता छ' });
+    }
 
     const existingUser = await User.findOne({ phone: cleanPhone });
     if (existingUser) {
@@ -66,7 +74,15 @@ exports.registerProvider = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'नाम, फोन नम्बर र पासवर्ड आवश्यक छ' });
     }
 
+    if (password.length < 6) {
+      return res.status(400).json({ success: false, message: 'पासवर्ड कम्तिमा ६ अक्षरको हुनुपर्छ' });
+    }
+
     const cleanPhone = phone.toString().trim().replace(/[\s-]/g, '');
+
+    if (await User.exists({ phone: cleanPhone })) {
+      return res.status(400).json({ success: false, message: 'यो फोन नम्बर बिरामीको रूपमा दर्ता छ' });
+    }
 
     const existingProvider = await Provider.findOne({ phone: cleanPhone });
     if (existingProvider) {
@@ -147,7 +163,7 @@ exports.login = async (req, res, next) => {
     // 3. Check Admin / SuperAdmin collection
     if (!user) {
       user = await Admin.findOne({
-        $or: [{ email: rawInput.toLowerCase() }, { name: rawInput }]
+        email: rawInput.toLowerCase()
       }).select('+password');
       if (user) {
         role = user.role || 'admin';
@@ -193,7 +209,7 @@ exports.adminLogin = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Email and password required' });
     }
 
-    const admin = await Admin.findOne({ email }).select('+password');
+    const admin = await Admin.findOne({ email: email.toString().trim().toLowerCase() }).select('+password');
     if (!admin) {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }

@@ -158,5 +158,39 @@ The `ServiceType` table is the whole point of the Registry approach: launching "
 
 ---
 
+## 11. Decision log
+
+### 2026-11-10 — System review (v0.2 hardening)
+**Booking state machine (now enforced server-side)**
+- `requested → confirmed → en_route → completed`, `cancelled` from any open state.
+- Patients: cancel only while `requested`/`confirmed`; after that it goes through dispatch by phone.
+- Providers: act only on bookings assigned to them, and only once verified. A patient-chosen provider is stored as `preferredProvider` and can **accept** (`requested → confirmed`). This replaces the old client call to the admin-only assign endpoint, which always failed.
+- Provider "can't make it" **releases** the visit back to `requested` for reassignment. It no longer cancels the patient's booking.
+- Patient phone and exact address are shown to a provider only after they accept (§4: ward-level until confirmed).
+- `statusHistory.changedBy` records `role:id` for every transition.
+- Price is always set server-side from `ServiceType.basePriceRange`. Phone-in quotes are clamped to that range.
+
+**RBAC**
+- `dispatcher`: phone-in bookings, assign providers, payment confirmation.
+- `admin`/`superadmin` only: provider verification (the trust decision, §6), service registry, audit log, IoT tooling.
+
+**Ops/security**
+- Dependency-free rate limiting (auth: 30 per 15 min per IP) and security headers. `trust proxy` is set for Nginx.
+- In production, the server fails fast on a missing `JWT_SECRET` or DB, with no silent fallback to local Mongo.
+- SMS gateway wiring (Sparrow-compatible). It only logs until `SMS_API_KEY` is set.
+- Hardcoded FlapMain keys removed from source. The IoT proxy is restricted to allowlisted hosts (SSRF).
+- Frontend: route-level code splitting (initial JS 610 KB → 269 KB), route guards, conservative service worker (never caches `/api`), zoom re-enabled for elderly users, hotline moved to `VITE_HOTLINE`.
+
+### Open items, in priority order
+1. **Rotate secrets.** `backend/.env`, `.env.server`, and the FlapMain partner/device keys were committed to git, and the keys were also in the public JS bundle. Rotate the Mongo password, JWT secret, and FlapMain keys. Then untrack the files (`git rm --cached`), coordinated with the VPS so a `git pull` doesn't delete the server's `.env`/`node_modules`.
+2. Set `NODE_ENV=production` on the VPS, plus the real `VITE_HOTLINE` and the JSON-LD telephone in `index.html`.
+3. Phone OTP verification (`verifiedPhone` exists but is never set) and password reset. This is needed so phone-in patients can claim their accounts.
+4. Move visit-report photos out of Mongo base64 into disk/object storage (16 MB document limit, slow lists).
+5. Real eSewa/Khalti integration (`utils/paymentService.js` is still a stub; UI currently says "pay at visit").
+6. Matching: `$near` geo query on provider `locationCoords` (GeoJSON + 2dsphere index) instead of a category-only filter. Respect `availabilitySchedule`.
+7. Dispatch view: queue of `requested` bookings with age and preferred provider, and auto-escalation when a preferred provider hasn't accepted within N minutes.
+8. Automated tests in CI (the E2E booking-flow script used in this review is a good seed) plus `npm audit fix` on the backend (1 critical, 1 high, 1 moderate).
+9. Full Nepali/English string extraction into a dictionary (currently inline `lang === 'ne' ? … : …`).
+
 *Next step: once §10 is answered, this document should get a companion `developmentplan.md` with sprint breakdown, following the same living-log convention as antygravity.*# gharkodoctor
 # gharkodoctor

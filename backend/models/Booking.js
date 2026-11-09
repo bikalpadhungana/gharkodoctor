@@ -11,6 +11,17 @@ const bookingSchema = new mongoose.Schema({
     ref: 'Provider',
     default: null
   },
+  // Provider the patient picked at booking time. They (or dispatch) confirm it; it is not an assignment.
+  preferredProvider: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Provider',
+    default: null
+  },
+  source: {
+    type: String,
+    enum: ['web', 'phone'],
+    default: 'web'
+  },
   serviceType: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'ServiceType',
@@ -90,13 +101,18 @@ const bookingSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Auto-add status change to history
+bookingSchema.index({ patient: 1, createdAt: -1 });
+bookingSchema.index({ provider: 1, scheduledTime: -1 });
+bookingSchema.index({ preferredProvider: 1, status: 1 });
+bookingSchema.index({ status: 1, createdAt: -1 });
+
+// Auto-add status change to history. Controllers set `_changedBy` to record who made the change.
 bookingSchema.pre('save', function(next) {
-  if (this.isModified('status')) {
+  if (this.isModified('status') || this.isNew) {
     this.statusHistory.push({
       status: this.status,
       changedAt: new Date(),
-      changedBy: 'system'
+      changedBy: this._changedBy || 'system'
     });
   }
   next();

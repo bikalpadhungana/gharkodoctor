@@ -14,8 +14,10 @@ export const FlapMainTestPanel = () => {
   const [config, setConfig] = useState({
     serverUrl: 'https://main.esainnovation.com/api',
     deviceId: 'flap-weight-fqs5',
-    deviceKey: 'flap_dev_b31e42eb7b2dd794f18e8d4f4434c33cdc78901c4e15b332',
-    partnerKey: 'flap_partner_bc1da6a0907e20fe8d917dec21653ca97994386864169ac1',
+    // Leave blank to use the server-side keys (FLAPMAIN_DEVICE_KEY / FLAP_PARTNER_KEY in backend env).
+    // Never hardcode keys here: everything in this file ships in the public JS bundle.
+    deviceKey: '',
+    partnerKey: '',
     wsUrl: 'wss://main.esainnovation.com'
   });
 

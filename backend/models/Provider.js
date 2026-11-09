@@ -121,6 +121,8 @@ const providerSchema = new mongoose.Schema({
   timestamps: true
 });
 
+providerSchema.index({ verificationStatus: 1, category: 1, rating: -1 });
+
 // Hash password before save
 providerSchema.pre('save', async function(next) {
   if (!this.isModified('password')) return next();

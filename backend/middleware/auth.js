@@ -23,7 +23,7 @@ const protect = async (req, res, next) => {
       req.user = await User.findById(decoded.id);
     } else if (decoded.role === 'provider') {
       req.user = await Provider.findById(decoded.id);
-    } else if (decoded.role === 'admin' || decoded.role === 'superadmin' || decoded.role === 'dispatcher') {
+    } else if (['admin', 'superadmin', 'dispatcher'].includes(decoded.role)) {
       req.user = await Admin.findById(decoded.id);
     }
 
@@ -51,11 +51,15 @@ const authorize = (...roles) => {
   };
 };
 
+// Role groups — keep RBAC decisions in one place.
+const STAFF_ROLES = ['admin', 'superadmin', 'dispatcher'];
+const ADMIN_ROLES = ['admin', 'superadmin'];
+
 // Generate JWT
 const generateToken = (id, role) => {
   return jwt.sign({ id, role }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRE
+    expiresIn: process.env.JWT_EXPIRE || '30d'
   });
 };
 
-module.exports = { protect, authorize, generateToken };
+module.exports = { protect, authorize, generateToken, STAFF_ROLES, ADMIN_ROLES };

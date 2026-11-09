@@ -8,13 +8,13 @@ const {
   updateBookingStatus,
   assignProvider
 } = require('../controllers/bookingController');
-const { protect, authorize } = require('../middleware/auth');
+const { protect, authorize, STAFF_ROLES } = require('../middleware/auth');
 
 router.post('/', protect, authorize('patient'), createBooking);
 router.get('/my', protect, authorize('patient'), getMyBookings);
 router.get('/provider/my', protect, authorize('provider'), getProviderBookings);
 router.get('/:id', protect, getBooking);
-router.patch('/:id/status', protect, authorize('patient', 'provider', 'admin'), updateBookingStatus);
-router.patch('/:id/assign', protect, authorize('admin'), assignProvider);
+router.patch('/:id/status', protect, authorize('patient', 'provider', ...STAFF_ROLES), updateBookingStatus);
+router.patch('/:id/assign', protect, authorize(...STAFF_ROLES), assignProvider);
 
 module.exports = router;

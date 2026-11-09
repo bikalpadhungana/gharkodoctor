@@ -171,7 +171,7 @@ exports.updateUserRole = async (req, res, next) => {
         adminAccount = await Admin.create({
           name: sourceUser.name,
           email: sourceUser.email || `${sourceUser.phone}@gharkodoctor.com`,
-          password: 'admin_' + Math.random().toString(36).substring(7),
+          password: require('crypto').randomBytes(24).toString('hex'),
           role: role
         });
       } else if (adminAccount) {
@@ -322,13 +322,26 @@ exports.createPhoneInBooking = async (req, res, next) => {
   try {
     const { patientName, patientPhone, serviceType, scheduledTime, address, ward, municipality, notes, amount } = req.body;
 
-    // Find or create user by phone
-    let user = await User.findOne({ phone: patientPhone });
+    const cleanPhone = (patientPhone || '').toString().trim().replace(/[\s-]/g, '');
+    if (!/^\+?[0-9]{7,15}$/.test(cleanPhone)) {
+      return res.status(400).json({ success: false, message: 'Valid patient phone number is required' });
+    }
+    if (!address || !address.trim()) {
+      return res.status(400).json({ success: false, message: 'Address is required' });
+    }
+    const when = scheduledTime ? new Date(scheduledTime) : new Date();
+    if (Number.isNaN(when.getTime())) {
+      return res.status(400).json({ success: false, message: 'Invalid scheduled time' });
+    }
+
+    // Find or create user by phone. Phone-in patients get an unguessable password; they can claim the
+    // account later via OTP/password reset.
+    let user = await User.findOne({ phone: cleanPhone });
     if (!user) {
       user = await User.create({
-        name: patientName || 'Phone Customer',
-        phone: patientPhone,
-        password: 'phone_' + Math.random().toString(36).substring(7),
+        name: (patientName || 'Phone Customer').trim(),
+        phone: cleanPhone,
+        password: require('crypto').randomBytes(24).toString('hex'),
         address,
         ward,
         municipality
@@ -340,24 +353,37 @@ exports.createPhoneInBooking = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Invalid service type' });
     }
 
-    const booking = await Booking.create({
+    const booking = new Booking({
       patient: user._id,
       serviceType,
-      scheduledTime: scheduledTime || new Date(),
+      source: 'phone',
+      scheduledTime: when,
       address,
       ward,
       municipality,
       paymentMethod: 'cash',
       notes: notes ? `[Phone Booking] ${notes}` : '[Phone-in Booking]',
-      amount: amount || service.basePriceRange.min
+      // Dispatch may quote a price over the phone, but only within the registry's range.
+      amount: Math.min(
+        Math.max(Number(amount) || service.basePriceRange.min, service.basePriceRange.min),
+        service.basePriceRange.max || Number.MAX_SAFE_INTEGER
+      )
     });
+    booking._changedBy = `${req.user.role}:${req.user._id}`;
+    await booking.save();
 
     const populatedBooking = await Booking.findById(booking._id)
       .populate('serviceType')
       .populate('patient', 'name phone');
 
     // Trigger SMS
-    sendSMS(patientPhone, smsTemplates.bookingConfirmed(user.name, service.displayName?.ne, new Date(scheduledTime).toLocaleString('ne-NP')));
+    sendSMS(cleanPhone, smsTemplates.bookingReceived(user.name, service.displayName?.ne, when.toLocaleString('ne-NP', { timeZone: 'Asia/Kathmandu' })));
+
+    await logAudit('PHONE_BOOKING_CREATED', req, {
+      type: 'Booking',
+      id: booking._id.toString(),
+      label: `Booking #${booking._id.toString().slice(-6)}`
+    }, { patientPhone: cleanPhone, serviceType: service.name });
 
     res.status(201).json({ success: true, booking: populatedBooking });
   } catch (error) {
@@ -380,6 +406,7 @@ exports.getServiceTypes = async (req, res, next) => {
 exports.createServiceType = async (req, res, next) => {
   try {
     const serviceType = await ServiceType.create(req.body);
+    await logAudit('SERVICE_TYPE_CREATED', req, { type: 'ServiceType', id: serviceType._id.toString(), label: serviceType.name });
     res.status(201).json({ success: true, serviceType });
   } catch (error) {
     next(error);
@@ -409,10 +436,29 @@ exports.updateServiceType = async (req, res, next) => {
 // FlapMain IoT & Sensor Telemetry Integration Proxy Controller Endpoints
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Default Constants
-const DEFAULT_FLAPMAIN_SERVER = process.env.FLAPMAIN_SERVER || 'http://main.esainnovation.com/api';
-const DEFAULT_PARTNER_KEY = process.env.FLAP_PARTNER_KEY || 'flap_partner_bc1da6a0907e20fe8d917dec21653ca97994386864169ac1';
-const DEFAULT_DEVICE_KEY = process.env.FLAPMAIN_DEVICE_KEY || 'flap_dev_b31e42eb7b2dd794f18e8d4f4434c33cdc78901c4e15b332';
+// Credentials come from env only — never hardcode keys in source (previous defaults were committed
+// to git and must be rotated on FlapMain).
+const DEFAULT_FLAPMAIN_SERVER = process.env.FLAPMAIN_SERVER || 'https://main.esainnovation.com/api';
+const DEFAULT_PARTNER_KEY = process.env.FLAP_PARTNER_KEY || '';
+const DEFAULT_DEVICE_KEY = process.env.FLAPMAIN_DEVICE_KEY || '';
+
+// The proxy only talks to known FlapMain hosts. Accepting any server_url from the client would let an
+// admin token be used to make this server request arbitrary internal URLs (SSRF) with our keys attached.
+const ALLOWED_FLAPMAIN_HOSTS = new Set(
+  [DEFAULT_FLAPMAIN_SERVER, ...(process.env.FLAPMAIN_ALLOWED_SERVERS || '').split(',')]
+    .map(u => { try { return new URL(u.trim()).host; } catch { return null; } })
+    .filter(Boolean)
+);
+
+const resolveFlapMainServer = (serverUrl) => {
+  const url = new URL(serverUrl || DEFAULT_FLAPMAIN_SERVER);
+  if (!['http:', 'https:'].includes(url.protocol) || !ALLOWED_FLAPMAIN_HOSTS.has(url.host)) {
+    const err = new Error('FlapMain server URL is not in the allowlist (FLAPMAIN_ALLOWED_SERVERS)');
+    err.statusCode = 400;
+    throw err;
+  }
+  return url.toString().replace(/\/+$/, '');
+};
 
 // Helper for fetch with fallback
 const flapMainFetch = async (targetUrl, options = {}) => {
@@ -436,6 +482,7 @@ const flapMainFetch = async (targetUrl, options = {}) => {
     fetchOptions.body = JSON.stringify(options.body);
   }
 
+  fetchOptions.signal = AbortSignal.timeout(15000);
   const response = await fetch(targetUrl, fetchOptions);
   const data = await response.json().catch(() => ({ message: 'Raw non-JSON response received' }));
   return { status: response.status, ok: response.ok, data };
@@ -448,8 +495,8 @@ exports.triggerFlapMainDevice = async (req, res, next) => {
     const {
       server_url = DEFAULT_FLAPMAIN_SERVER,
       device_id = 'flap-weight-fqs5',
-      device_key = DEFAULT_DEVICE_KEY,
-      partner_key = DEFAULT_PARTNER_KEY,
+      device_key,
+      partner_key,
       external_user_id = 'PATIENT-1042',
       user_name = 'Bikalpa Dhungana',
       callback_url = 'https://www.gharkodoctor.com/api/v1/webhooks/scale-readings',
@@ -457,7 +504,7 @@ exports.triggerFlapMainDevice = async (req, res, next) => {
       jwt_token = ''
     } = req.body;
 
-    const cleanServerUrl = server_url.replace(/\/+$/, '');
+    const cleanServerUrl = resolveFlapMainServer(server_url);
     const encodedDeviceId = encodeURIComponent(device_id);
     const targetUrl = `${cleanServerUrl}/v1/devices/${encodedDeviceId}/trigger`;
 
@@ -506,12 +553,12 @@ exports.getFlapMainTriggerStatus = async (req, res, next) => {
     const {
       server_url = DEFAULT_FLAPMAIN_SERVER,
       device_id = 'flap-weight-fqs5',
-      device_key = DEFAULT_DEVICE_KEY,
-      partner_key = DEFAULT_PARTNER_KEY,
+      device_key,
+      partner_key,
       jwt_token = ''
     } = req.body;
 
-    const cleanServerUrl = server_url.replace(/\/+$/, '');
+    const cleanServerUrl = resolveFlapMainServer(server_url);
     const encodedDeviceId = encodeURIComponent(device_id);
     const targetUrl = `${cleanServerUrl}/v1/devices/${encodedDeviceId}/trigger-status`;
 
@@ -539,12 +586,12 @@ exports.lookupFlapMainTag = async (req, res, next) => {
     const {
       server_url = DEFAULT_FLAPMAIN_SERVER,
       uid = '04:A1:B2:C3:D4:E5:F6',
-      device_key = DEFAULT_DEVICE_KEY,
-      partner_key = DEFAULT_PARTNER_KEY,
+      device_key,
+      partner_key,
       jwt_token = ''
     } = req.body;
 
-    const cleanServerUrl = server_url.replace(/\/+$/, '');
+    const cleanServerUrl = resolveFlapMainServer(server_url);
     const targetUrl = `${cleanServerUrl}/tags/lookup`;
 
     const result = await flapMainFetch(targetUrl, {

@@ -1,14 +1,42 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { StatusBadge } from '../components/StatusBadge';
-import { Calendar, Clock, MapPin, Phone, ShieldCheck, Star, AlertCircle, CheckCircle, XCircle, MessageSquare, FileText } from 'lucide-react';
+import { Clock, MapPin, Phone, Star, CheckCircle, XCircle, MessageSquare, FileText, PartyPopper } from 'lucide-react';
+import { PageLoader } from '../components/PageLoader';
+
+const TRACK_STEPS = [
+  { key: 'requested', ne: 'अनुरोध', en: 'Requested' },
+  { key: 'confirmed', ne: 'पक्का', en: 'Confirmed' },
+  { key: 'en_route', ne: 'बाटोमा', en: 'On the way' },
+  { key: 'completed', ne: 'सम्पन्न', en: 'Done' }
+];
+
+const BookingTracker = ({ status, lang }) => {
+  if (status === 'cancelled') return null;
+  const currentIdx = TRACK_STEPS.findIndex(s => s.key === status);
+  return (
+    <ol className="tracker" aria-label={lang === 'ne' ? 'बुकिङको अवस्था' : 'Booking progress'} style={{ listStyle: 'none', padding: 0 }}>
+      {TRACK_STEPS.map((step, i) => {
+        const state = i < currentIdx || status === 'completed' ? 'done' : i === currentIdx ? 'current' : '';
+        return (
+          <li key={step.key} className={`tracker-step ${state}`} aria-current={state === 'current' ? 'step' : undefined}>
+            <span className="tracker-dot">{state === 'done' ? '✓' : i + 1}</span>
+            <span className="tracker-label">{step[lang] || step.ne}</span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+};
 
 export const BookingDetailPage = () => {
   const { id } = useParams();
   const { lang, token, user } = useAuth();
-  const navigate = useNavigate();
+  const location = useLocation();
+  const justBooked = Boolean(location.state?.justBooked);
+  const [reviewError, setReviewError] = useState('');
 
   const [booking, setBooking] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -25,7 +53,20 @@ export const BookingDetailPage = () => {
 
   useEffect(() => {
     fetchBooking();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, token]);
+
+  // Light polling while a visit is in progress so the patient sees "confirmed" / "on the way"
+  // without refreshing. Paused when the tab is hidden to save data and battery.
+  const isActive = booking && ['requested', 'confirmed', 'en_route'].includes(booking.status);
+  useEffect(() => {
+    if (!isActive) return;
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') fetchBooking();
+    }, 60000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, id, token]);
 
   const fetchBooking = async () => {
     try {
@@ -67,15 +108,16 @@ export const BookingDetailPage = () => {
 
       if (res.success) {
         setReviewSubmitted(true);
+        setReviewError('');
+      } else {
+        setReviewError(res.message || (lang === 'ne' ? 'रेटिङ पठाउन सकिएन' : 'Could not submit rating'));
       }
     } catch (err) {
       console.error(err);
     }
   };
 
-  if (loading) {
-    return <div className="container" style={{ paddingTop: '30px', textAlign: 'center' }}>{lang === 'ne' ? 'लोड हुँदैछ...' : 'Loading details...'}</div>;
-  }
+  if (loading) return <PageLoader />;
 
   if (!booking) {
     return <div className="container" style={{ paddingTop: '30px', textAlign: 'center' }}>{lang === 'ne' ? 'बुकिङ फेला परेन' : 'Booking not found'}</div>;
@@ -87,10 +129,24 @@ export const BookingDetailPage = () => {
     timeStyle: 'short'
   });
 
-  const canCancel = ['requested', 'confirmed'].includes(booking.status);
+  const canCancel = user?.role === 'patient' && ['requested', 'confirmed'].includes(booking.status);
 
   return (
     <div className="container" style={{ paddingTop: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {justBooked && booking.status === 'requested' && (
+        <div className="card" role="status" style={{ background: 'var(--success-light)', borderColor: '#86efac', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+          <PartyPopper size={24} color="#15803d" style={{ flexShrink: 0 }} />
+          <div>
+            <strong style={{ color: '#15803d', fontSize: '1rem' }}>{lang === 'ne' ? 'बुकिङ अनुरोध पठाइयो!' : 'Booking request sent!'}</strong>
+            <p style={{ fontSize: '0.85rem', color: '#166534', marginTop: '2px' }}>
+              {lang === 'ne'
+                ? 'स्वास्थ्यकर्मी तोकिएपछि उहाँको नाम र फोन नम्बर SMS मा पठाइनेछ। तपाईं यो पृष्ठमा पनि हेर्न सक्नुहुन्छ।'
+                : "We'll SMS you the provider's name and phone once they're assigned. You can also check this page."}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Header card */}
       <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <div className="flex-between">
@@ -109,6 +165,11 @@ export const BookingDetailPage = () => {
             </span>
           </div>
         </div>
+
+        <BookingTracker status={booking.status} lang={lang} />
+        {booking.status === 'cancelled' && booking.cancellationReason && (
+          <div className="alert alert-error"><XCircle size={16} /><span>{booking.cancellationReason}</span></div>
+        )}
       </div>
 
       {/* Date & Location */}
@@ -154,7 +215,7 @@ export const BookingDetailPage = () => {
         {booking.provider ? (
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
             <div style={{ width: '48px', height: '48px', borderRadius: 'var(--radius-full)', background: 'var(--primary-light)', color: 'var(--primary)', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: '1.2rem' }}>
-              {booking.provider.name.charAt(0)}
+              {booking.provider.name?.charAt(0)}
             </div>
 
             <div style={{ flex: 1 }}>
@@ -173,7 +234,11 @@ export const BookingDetailPage = () => {
           </div>
         ) : (
           <div style={{ padding: '12px', background: '#fef3c7', borderRadius: 'var(--radius-md)', fontSize: '0.85rem', color: '#b45309' }}>
-            ⏳ {lang === 'ne' ? 'तपाईंको नजिकको प्रमाणीकृत स्वास्थ्यकर्मी मिलाइँदैछ...' : 'Assigning nearest verified provider...'}
+            ⏳ {booking.preferredProvider
+              ? (lang === 'ne'
+                  ? `${booking.preferredProvider.name} ले स्वीकार गर्न पर्खँदै… नभए हाम्रो टोलीले अर्को स्वास्थ्यकर्मी पठाउनेछ।`
+                  : `Waiting for ${booking.preferredProvider.name} to accept… otherwise dispatch will send another verified provider.`)
+              : (lang === 'ne' ? 'तपाईंको नजिकको प्रमाणीकृत स्वास्थ्यकर्मी मिलाइँदैछ...' : 'Assigning nearest verified provider...')}
           </div>
         )}
       </div>
@@ -331,18 +396,23 @@ export const BookingDetailPage = () => {
             </div>
           ) : (
             <form onSubmit={handleReviewSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div style={{ display: 'flex', gap: '8px' }}>
+              <div style={{ display: 'flex', gap: '4px' }} role="radiogroup" aria-label={lang === 'ne' ? 'रेटिङ' : 'Rating'}>
                 {[1, 2, 3, 4, 5].map((star) => (
-                  <Star
+                  <button
                     key={star}
-                    size={28}
-                    fill={star <= rating ? 'var(--secondary)' : 'none'}
-                    color="var(--secondary)"
-                    style={{ cursor: 'pointer' }}
+                    type="button"
+                    role="radio"
+                    aria-checked={star === rating}
+                    aria-label={`${star} / 5`}
+                    className="icon-btn"
+                    style={{ width: '44px', height: '44px' }}
                     onClick={() => setRating(star)}
-                  />
+                  >
+                    <Star size={28} fill={star <= rating ? 'var(--secondary)' : 'none'} color="var(--secondary)" />
+                  </button>
                 ))}
               </div>
+              {reviewError && <div className="alert alert-error" role="alert">{reviewError}</div>}
 
               <textarea
                 className="form-textarea"

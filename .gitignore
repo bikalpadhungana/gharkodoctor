@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Secrets — never commit real env files (use backend/.env.example as the template)
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea
+
+# Logs
+*.log
+
+# Frontend build output (backend/dist is the deploy artifact and is intentionally still tracked)
+frontend/dist/
