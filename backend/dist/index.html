@@ -4,7 +4,11 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/icon.png" />
     <link rel="manifest" href="/manifest.json" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <!-- Zoom must stay enabled: many users are elderly or low-vision (WCAG 1.4.4). -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="apple-touch-icon" href="/pwa-192x192.png" />
     <meta name="theme-color" content="#0d9488" />
 
     <!-- Primary Meta Tags -->
@@ -103,8 +107,9 @@
       ]
     }
     </script>
-    <script type="module" crossorigin src="/assets/index-DsvD91hU.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-BoNoTTqg.css">
+    <script type="module" crossorigin src="/assets/index-DJSc4Wof.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/createLucideIcon-C-rXKG6y.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-De9NASDT.css">
   </head>
   <body>
     <div id="root"></div>
