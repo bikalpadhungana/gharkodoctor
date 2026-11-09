@@ -92,7 +92,7 @@ export const api = {
   getAllProviders: (token, status = '') => request(`/admin/providers${qs({ status })}`, { token }),
   verifyProvider: (id, status, notes, token) =>
     request(`/admin/providers/${id}/verify`, { method: 'PATCH', body: { status, notes }, token }),
-  getAllBookings: (token, status = '') => request(`/admin/bookings${qs({ status })}`, { token }),
+  getAllBookings: (token, status = '', limit) => request(`/admin/bookings${qs({ status, limit })}`, { token }),
   createPhoneInBooking: (data, token) => request('/admin/bookings/phone-in', { method: 'POST', body: data, token }),
   verifyPayment: (bookingId, paymentStatus, paymentMethod = 'cash', amount = 0, notes = '', token) =>
     request(`/admin/bookings/${bookingId}/payment`, {

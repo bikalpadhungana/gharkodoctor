@@ -1,5 +1,5 @@
 import React, { lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Navbar } from './components/Navbar';
 import { BottomNav } from './components/BottomNav';
@@ -7,7 +7,7 @@ import { EmergencyButton } from './components/EmergencyButton';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { PageLoader } from './components/PageLoader';
 import { HomePage } from './pages/HomePage';
-import { STAFF_ROLES } from './config';
+import { STAFF_ROLES, homePathForRole } from './config';
 
 // Route-level code splitting: patients on 3G only download the home page up front.
 // Admin dashboard, IoT panel and the Leaflet map are fetched only when those routes are opened.
@@ -23,6 +23,17 @@ const BookingDetailPage = named(() => import('./pages/BookingDetailPage'), 'Book
 const ProviderDashboardPage = named(() => import('./pages/ProviderDashboardPage'), 'ProviderDashboardPage');
 const ProviderProfilePage = named(() => import('./pages/ProviderProfilePage'), 'ProviderProfilePage');
 const AdminDashboardPage = named(() => import('./pages/AdminDashboardPage'), 'AdminDashboardPage');
+const PatientHomePage = named(() => import('./pages/PatientHomePage'), 'PatientHomePage');
+
+// "/" is the marketing page for guests, and a personal home for signed-in users.
+// Providers and staff are sent to their own dashboards.
+const HomeRoute = () => {
+  const { user, loading } = useAuth();
+  if (loading) return <PageLoader />;
+  if (user?.role === 'patient') return <PatientHomePage />;
+  if (user) return <Navigate to={homePathForRole(user.role)} replace />;
+  return <HomePage />;
+};
 
 const NotFoundPage = () => {
   const { lang } = useAuth();
@@ -54,7 +65,7 @@ export function App() {
           <main id="main" style={{ flex: 1 }}>
             <Suspense fallback={<PageLoader />}>
               <Routes>
-                <Route path="/" element={<HomePage />} />
+                <Route path="/" element={<HomeRoute />} />
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register-patient" element={<RegisterPatientPage />} />
                 <Route path="/register-provider" element={<RegisterProviderPage />} />

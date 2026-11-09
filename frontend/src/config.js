@@ -13,6 +13,8 @@ export const HOTLINE_DISPLAY = import.meta.env.VITE_HOTLINE_DISPLAY || HOTLINE;
 export const AMBULANCE = '102';
 
 export const STAFF_ROLES = ['admin', 'superadmin', 'dispatcher'];
+// Mirrors backend ADMIN_ROLES (middleware/auth.js): roles allowed to make trust decisions.
+export const ADMIN_ROLES = ['admin', 'superadmin'];
 
 export const homePathForRole = (role) => {
   if (STAFF_ROLES.includes(role)) return '/admin/dashboard';

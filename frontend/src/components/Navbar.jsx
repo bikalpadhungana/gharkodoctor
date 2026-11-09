@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { PatientProfileModal } from './PatientProfileModal';
 import { LogOut, Globe, User } from 'lucide-react';
@@ -9,7 +9,39 @@ export const Navbar = () => {
   const navigate = useNavigate();
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
+  const ne = lang === 'ne';
+  const role = user?.role;
+  const isStaffUser = ['admin', 'superadmin', 'dispatcher'].includes(role);
+
+  const navLinks = !isAuthenticated
+    ? [
+        { to: '/', label: ne ? 'गृह' : 'Home' },
+        { to: '/services', label: ne ? 'सेवाहरू' : 'Services' },
+        { to: '/register-provider', label: ne ? 'स्वास्थ्यकर्मी दर्ता' : 'Join as Provider', style: { color: 'var(--primary)', fontWeight: 700 } }
+      ]
+    : role === 'patient'
+      ? [
+          { to: '/', label: ne ? 'गृह' : 'Home' },
+          { to: '/services', label: ne ? 'नयाँ भिजिट' : 'Book a visit' },
+          { to: '/my-bookings', label: ne ? 'मेरो बुकिङ' : 'My bookings' }
+        ]
+      : role === 'provider'
+        ? [
+            { to: '/provider/dashboard', label: ne ? 'मेरो भिजिट' : 'My visits' },
+            { to: '/provider/profile', label: ne ? 'प्रोफाइल' : 'Profile' }
+          ]
+        : [{ to: '/admin/dashboard', label: ne ? 'डिस्प्याच प्यानल' : 'Dispatch panel' }];
+
+  const roleLabel = {
+    patient: ne ? 'बिरामी' : 'Patient',
+    provider: ne ? 'स्वास्थ्यकर्मी' : 'Provider',
+    dispatcher: ne ? 'डिस्प्याचर' : 'Dispatcher',
+    admin: ne ? 'एडमिन' : 'Admin',
+    superadmin: ne ? 'सुपर एडमिन' : 'Super admin'
+  }[role];
+
   const handleLogout = () => {
+    if (!window.confirm(ne ? 'लगआउट गर्ने?' : 'Log out?')) return;
     logout();
     navigate('/login');
   };
@@ -33,28 +65,14 @@ export const Navbar = () => {
           </div>
         </Link>
 
-        {/* Desktop Navigation Links */}
-        <div className="desktop-nav-links">
-          <Link to="/" className="nav-link-desktop">
-            {lang === 'ne' ? 'गृह (Home)' : 'Home'}
-          </Link>
-          <Link to="/services" className="nav-link-desktop">
-            {lang === 'ne' ? 'सेवाहरू (Services)' : 'Services'}
-          </Link>
-          {isAuthenticated && (
-            <Link to="/my-bookings" className="nav-link-desktop">
-              {lang === 'ne' ? 'हाम्रा बुकिङहरू' : 'My Bookings'}
-            </Link>
-          )}
-          <Link to="/register-provider" className="nav-link-desktop" style={{ color: 'var(--primary)', fontWeight: 700 }}>
-            {lang === 'ne' ? 'स्वास्थ्यकर्मी दर्ता' : 'Join as Provider'}
-          </Link>
-          {(user?.role === 'admin' || user?.role === 'superadmin' || user?.role === 'dispatcher') && (
-            <Link to="/admin/dashboard" className="nav-link-desktop" style={{ color: 'var(--accent)', fontWeight: 700 }}>
-              🛡️ {lang === 'ne' ? 'एडमिन प्यानल' : 'Admin Panel'}
-            </Link>
-          )}
-        </div>
+        {/* Desktop navigation — what each role actually uses */}
+        <nav className="desktop-nav-links" aria-label="Main">
+          {navLinks.map(l => (
+            <NavLink key={l.to} to={l.to} end className={({ isActive }) => `nav-link-desktop ${isActive ? 'active' : ''}`} style={l.style}>
+              {l.label}
+            </NavLink>
+          ))}
+        </nav>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           {/* Language Switcher */}
@@ -80,7 +98,8 @@ export const Navbar = () => {
               <button
                 onClick={() => {
                   if (isPatient) setIsProfileModalOpen(true);
-                  else if (user.role === 'provider') navigate('/provider/profile');
+                  else if (role === 'provider') navigate('/provider/profile');
+                  else if (isStaffUser) navigate('/admin/dashboard');
                 }}
                 style={{
                   background: 'none',
@@ -122,8 +141,11 @@ export const Navbar = () => {
                     {user.name?.charAt(0) || 'U'}
                   </div>
                 )}
-                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--primary-hover)' }}>
-                  {user.name.split(' ')[0]}
+                <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', lineHeight: 1.15 }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--primary-hover)' }}>
+                    {user.name?.split(' ')[0]}
+                  </span>
+                  <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 600 }}>{roleLabel}</span>
                 </span>
               </button>
 
@@ -136,7 +158,8 @@ export const Navbar = () => {
                   cursor: 'pointer',
                   padding: '4px'
                 }}
-                title="Logout"
+                title={ne ? 'लगआउट' : 'Log out'}
+                aria-label={ne ? 'लगआउट' : 'Log out'}
               >
                 <LogOut size={18} />
               </button>

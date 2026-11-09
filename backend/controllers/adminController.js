@@ -290,17 +290,20 @@ exports.verifyProvider = async (req, res, next) => {
 // @route   GET /api/admin/bookings
 exports.getAllBookings = async (req, res, next) => {
   try {
-    const { status, page = 1, limit = 20 } = req.query;
+    const { status } = req.query;
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 200);
     const filter = {};
-    if (status) filter.status = status;
+    if (status) filter.status = { $in: status.split(',') };
 
     const bookings = await Booking.find(filter)
       .populate('patient', 'name phone address')
       .populate('provider', 'name phone verificationStatus')
-      .populate('serviceType', 'displayName')
+      .populate('preferredProvider', 'name phone')
+      .populate('serviceType', 'displayName icon')
       .sort('-createdAt')
       .skip((page - 1) * limit)
-      .limit(parseInt(limit));
+      .limit(limit);
 
     const total = await Booking.countDocuments(filter);
 

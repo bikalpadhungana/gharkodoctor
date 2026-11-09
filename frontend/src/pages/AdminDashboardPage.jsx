@@ -4,13 +4,33 @@ import { api } from '../services/api';
 import { StatusBadge } from '../components/StatusBadge';
 import { LocationPickerModal } from '../components/LocationPickerModal';
 import { FlapMainTestPanel } from '../components/FlapMainTestPanel';
-import { ShieldCheck, Users, Calendar, Check, X, PhoneCall, RefreshCw, AlertCircle, PlusCircle, Map, CreditCard, UserCheck, FileText, Activity, ShieldAlert, History, Lock, Radio } from 'lucide-react';
+import { ShieldCheck, Users, Calendar, Check, X, PhoneCall, RefreshCw, Map, CreditCard, FileText, History, Radio, Inbox, Search, Phone, Clock, MapPin, Star } from 'lucide-react';
+import { useFlash } from '../components/Flash';
+import { serviceName, friendlyTime, ageLabel, minutesSince } from '../utils/booking';
+import { ADMIN_ROLES } from '../config';
+
+// A request unassigned for longer than this is flagged in the dispatch queue.
+const QUEUE_ALERT_MINUTES = 30;
+const BOOKING_FILTERS = [
+  { key: '', ne: 'सबै', en: 'All' },
+  { key: 'requested', ne: 'अनुरोध', en: 'Requested' },
+  { key: 'confirmed,en_route', ne: 'सक्रिय', en: 'Active' },
+  { key: 'completed', ne: 'सम्पन्न', en: 'Completed' },
+  { key: 'cancelled', ne: 'रद्द', en: 'Cancelled' }
+];
 
 export const AdminDashboardPage = () => {
   const { lang, token, user: currentUser } = useAuth();
   const isSuperAdmin = currentUser?.role === 'superadmin';
+  // Dispatchers run the queue and phone bookings; trust decisions and tooling are admin-only (matches backend RBAC).
+  const isAdminRole = ADMIN_ROLES.includes(currentUser?.role);
+  const [flash, showFlash] = useFlash();
 
-  const [activeTab, setActiveTab] = useState('pending'); // 'pending' | 'bookings' | 'phonein' | 'users' | 'audit'
+  const [activeTab, setActiveTab] = useState('queue'); // 'queue' | 'pending' | 'bookings' | 'phonein' | 'telemetry' | 'users' | 'audit'
+  const [queue, setQueue] = useState([]);
+  const [activeVisits, setActiveVisits] = useState([]);
+  const [bookingFilter, setBookingFilter] = useState('');
+  const [search, setSearch] = useState('');
   const [stats, setStats] = useState(null);
   const [pendingProviders, setPendingProviders] = useState([]);
   const [allBookings, setAllBookings] = useState([]);
@@ -49,27 +69,42 @@ export const AdminDashboardPage = () => {
 
   useEffect(() => {
     loadData();
-  }, [token, activeTab]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, activeTab, bookingFilter]);
+
+  // Keep the dispatch queue fresh while it's on screen.
+  useEffect(() => {
+    if (activeTab !== 'queue') return;
+    const t = setInterval(() => document.visibilityState === 'visible' && loadData(), 45000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, token]);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const [statsRes, pendingRes, bookingsRes, verifiedRes, servicesRes] = await Promise.all([
+      const none = Promise.resolve({ success: false });
+      const [statsRes, pendingRes, bookingsRes, verifiedRes, servicesRes, queueRes, activeRes] = await Promise.all([
         api.getAdminStats(token),
-        api.getPendingProviders(token),
-        api.getAllBookings(token),
+        isAdminRole ? api.getPendingProviders(token) : none,
+        activeTab === 'bookings' ? api.getAllBookings(token, bookingFilter, 100) : none,
         api.getAllProviders(token, 'verified'),
-        api.getServices()
+        api.getServices(),
+        api.getAllBookings(token, 'requested', 200),
+        api.getAllBookings(token, 'confirmed,en_route', 200)
       ]);
 
       if (statsRes.success) setStats(statsRes.stats);
       if (pendingRes.success) setPendingProviders(pendingRes.providers);
       if (bookingsRes.success) setAllBookings(bookingsRes.bookings);
+      // Oldest request first: it has been waiting longest.
+      if (queueRes.success) setQueue([...queueRes.bookings].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)));
+      if (activeRes.success) setActiveVisits([...activeRes.bookings].sort((a, b) => new Date(a.scheduledTime) - new Date(b.scheduledTime)));
       if (verifiedRes.success) setVerifiedProviders(verifiedRes.providers);
       if (servicesRes.success) {
         setServiceTypes(servicesRes.serviceTypes);
         if (servicesRes.serviceTypes.length > 0) {
-          setPhoneForm(prev => ({ ...prev, serviceType: servicesRes.serviceTypes[0]._id }));
+          setPhoneForm(prev => ({ ...prev, serviceType: prev.serviceType || servicesRes.serviceTypes[0]._id }));
         }
       }
 
@@ -89,39 +124,96 @@ export const AdminDashboardPage = () => {
     }
   };
 
-  const handleVerify = async (providerId, status) => {
-    try {
-      const res = await api.verifyProvider(providerId, status, 'Admin reviewed', token);
-      if (res.success) loadData();
-    } catch (err) {
-      console.error(err);
+  const handleVerify = async (provider, status) => {
+    let notes = 'Admin reviewed';
+    if (status === 'rejected') {
+      // The provider sees this reason on their dashboard, so ask for something actionable.
+      const reason = window.prompt(lang === 'ne' ? 'अस्वीकृत गर्ने कारण (स्वास्थ्यकर्मीले देख्नुहुनेछ):' : 'Reason for rejection (shown to the provider):');
+      if (reason === null) return;
+      notes = reason || 'Documents could not be verified';
+    } else if (!window.confirm(lang === 'ne' ? `${provider.name} लाई स्वीकृत गर्ने? उहाँले बिरामीको घरमा भिजिट गर्न सक्नुहुनेछ।` : `Approve ${provider.name}? They will be able to visit patients' homes.`)) {
+      return;
+    }
+    const res = await api.verifyProvider(provider._id, status, notes, token);
+    if (res.success) {
+      showFlash(status === 'verified' ? `✓ ${provider.name} ${lang === 'ne' ? 'स्वीकृत' : 'approved'}` : `${provider.name} ${lang === 'ne' ? 'अस्वीकृत' : 'rejected'}`);
+      loadData();
+    } else {
+      showFlash(res.message || 'Failed', 'error');
     }
   };
 
   const handleAssignProvider = async (bookingId, providerId) => {
-    try {
-      const res = await api.assignProvider(bookingId, providerId, token);
-      if (res.success) loadData();
-    } catch (err) {
-      console.error(err);
+    const res = await api.assignProvider(bookingId, providerId, token);
+    if (res.success) {
+      showFlash(lang === 'ne' ? `✓ ${res.booking.provider?.name} तोकियो — दुवैलाई SMS गयो` : `✓ Assigned ${res.booking.provider?.name} — both notified by SMS`);
+      loadData();
+    } else {
+      showFlash(res.message || 'Assignment failed', 'error');
     }
   };
 
   const handleVerifyPayment = async (bookingId, paymentStatus) => {
-    try {
-      const res = await api.verifyPayment(bookingId, paymentStatus, 'cash', 0, 'Verified by Admin', token);
-      if (res.success) loadData();
-    } catch (err) {
-      console.error(err);
+    const res = await api.verifyPayment(bookingId, paymentStatus, 'cash', 0, 'Verified by Admin', token);
+    if (res.success) {
+      showFlash(lang === 'ne' ? 'भुक्तानी अपडेट भयो' : 'Payment updated');
+      loadData();
+    } else {
+      showFlash(res.message || 'Failed', 'error');
     }
   };
+
+  // Providers offering this booking's service first; the patient's preferred provider at the top.
+  const providersFor = (b) => {
+    const stId = b.serviceType?._id || b.serviceType;
+    const matching = verifiedProviders.filter(vp => (vp.category?._id || vp.category) === stId);
+    const others = verifiedProviders.filter(vp => !matching.includes(vp));
+    const prefId = b.preferredProvider?._id;
+    const sortPref = (list) => [...list].sort((x, y) => (y._id === prefId) - (x._id === prefId));
+    return { matching: sortPref(matching), others };
+  };
+
+  const AssignControl = ({ b }) => {
+    const { matching, others } = providersFor(b);
+    const label = (vp) => `${vp._id === b.preferredProvider?._id ? '★ ' : ''}${vp.name} · ${vp.ward ? `${lang === 'ne' ? 'वडा' : 'Ward'} ${vp.ward} · ` : ''}⭐${vp.rating || '-'}${vp.isNewProvider ? ' · NEW' : ''}`;
+    return (
+      <select
+        className="form-select"
+        aria-label={lang === 'ne' ? 'स्वास्थ्यकर्मी तोक्नुहोस्' : 'Assign provider'}
+        style={{ fontSize: '0.88rem', padding: '8px' }}
+        defaultValue=""
+        onChange={(e) => e.target.value && handleAssignProvider(b._id, e.target.value)}
+      >
+        <option value="">{lang === 'ne' ? 'स्वास्थ्यकर्मी तोक्नुहोस्…' : 'Assign a provider…'}</option>
+        {matching.length > 0 && (
+          <optgroup label={lang === 'ne' ? 'यो सेवा दिने' : 'Offers this service'}>
+            {matching.map(vp => <option key={vp._id} value={vp._id}>{label(vp)}</option>)}
+          </optgroup>
+        )}
+        {others.length > 0 && (
+          <optgroup label={lang === 'ne' ? 'अन्य प्रमाणित' : 'Other verified'}>
+            {others.map(vp => <option key={vp._id} value={vp._id}>{label(vp)}</option>)}
+          </optgroup>
+        )}
+      </select>
+    );
+  };
+
+  const q = search.trim().toLowerCase();
+  const filteredBookings = q
+    ? allBookings.filter(b => [b.patient?.name, b.patient?.phone, b.provider?.name, b.address, b._id]
+        .some(v => v && v.toString().toLowerCase().includes(q)))
+    : allBookings;
+  const overdueCount = queue.filter(b => minutesSince(b.createdAt) > QUEUE_ALERT_MINUTES).length;
 
   const handlePromoteUser = async (userId, targetRole, userType) => {
     try {
       const res = await api.updateUserRole(userId, targetRole, userType, token);
       if (res.success) {
-        alert(lang === 'ne' ? `भूमिका परिवर्तन भयो: ${targetRole}` : `User role updated to ${targetRole}!`);
+        showFlash(lang === 'ne' ? `भूमिका परिवर्तन भयो: ${targetRole}` : `Role updated to ${targetRole}`);
         loadData();
+      } else {
+        showFlash(res.message || 'Failed', 'error');
       }
     } catch (err) {
       console.error(err);
@@ -160,106 +252,149 @@ export const AdminDashboardPage = () => {
     }
   };
 
+  const TabBtn = ({ id, icon: Icon, ne, en, count, warn }) => (
+    <button role="tab" aria-selected={activeTab === id} onClick={() => setActiveTab(id)}>
+      <Icon size={15} /> {lang === 'ne' ? ne : en}
+      {count > 0 && <span className={`count-pill ${warn ? 'warn' : ''}`}>{count}</span>}
+    </button>
+  );
+
   return (
-    <div className="container desktop-wide" style={{ paddingTop: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <div className="flex-between">
+    <div className="container desktop-wide dash">
+      <div className="section-head">
         <div>
-          <h2 style={{ fontSize: '1.4rem', fontWeight: 800 }}>
-            🛡️ {isSuperAdmin
-              ? (lang === 'ne' ? 'सुपर एडमिन कन्ट्रोल सेन्टर' : 'Super Admin Control Center')
-              : (lang === 'ne' ? 'घरको डाक्टर एडमिन र डिस्प्याच प्यानल' : 'GharkoDoctor Admin Dispatch Panel')}
-          </h2>
-          <span style={{ fontSize: '0.8rem', color: 'var(--primary)', fontWeight: 700 }}>
-            {lang === 'ne' ? 'लगइन प्रयोगकर्ता:' : 'Logged in as:'} {currentUser?.name} ({currentUser?.role?.toUpperCase()})
+          <h1 style={{ fontSize: '1.3rem', fontWeight: 800 }}>
+            {isSuperAdmin
+              ? (lang === 'ne' ? 'सुपर एडमिन' : 'Super Admin')
+              : currentUser?.role === 'dispatcher'
+                ? (lang === 'ne' ? 'डिस्प्याच डेस्क' : 'Dispatch Desk')
+                : (lang === 'ne' ? 'एडमिन प्यानल' : 'Admin Panel')}
+          </h1>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            {currentUser?.name} · <span className="badge badge-verified">{currentUser?.role}</span>
           </span>
         </div>
-        <button onClick={loadData} className="btn btn-outline" style={{ width: 'auto', padding: '6px 12px' }}>
-          <RefreshCw size={16} />
+        <button onClick={loadData} className="icon-btn" aria-label="Refresh" disabled={loading}>
+          <RefreshCw size={18} className={loading ? 'spin' : ''} />
         </button>
       </div>
 
-      {/* Overview Cards */}
-      {stats && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px' }}>
-          <div className="card" style={{ textAlign: 'center', padding: '12px' }}>
-            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--primary)' }}>{stats.pendingVerifications}</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{lang === 'ne' ? 'विचाराधीन प्रदायक' : 'Pending Providers'}</div>
+      {/* Overview: every tile jumps to where you act on it */}
+      <div className="stat-grid">
+        <button className={`stat-tile ${overdueCount > 0 ? 'attn' : ''}`} onClick={() => setActiveTab('queue')}>
+          <div className="v" style={{ color: queue.length ? '#b45309' : 'var(--text-main)' }}>{queue.length}</div>
+          <div className="l">
+            {lang === 'ne' ? 'तोक्न बाँकी' : 'Awaiting assignment'}
+            {overdueCount > 0 && <strong style={{ color: '#b91c1c' }}> · {overdueCount} {lang === 'ne' ? 'ढिलो' : 'overdue'}</strong>}
           </div>
-          <div className="card" style={{ textAlign: 'center', padding: '12px' }}>
-            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--success)' }}>{stats.verifiedProviders}</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{lang === 'ne' ? 'प्रमाणीकृत प्रदायक' : 'Verified Providers'}</div>
+        </button>
+        <button className="stat-tile" onClick={() => setActiveTab('queue')}>
+          <div className="v" style={{ color: 'var(--primary)' }}>{activeVisits.length}</div>
+          <div className="l">{lang === 'ne' ? 'सक्रिय भिजिट' : 'Active visits'}</div>
+        </button>
+        {isAdminRole ? (
+          <button className={`stat-tile ${pendingProviders.length ? 'attn' : ''}`} onClick={() => setActiveTab('pending')}>
+            <div className="v">{stats?.pendingVerifications ?? '–'}</div>
+            <div className="l">{lang === 'ne' ? 'प्रमाणीकरण बाँकी' : 'Providers to verify'}</div>
+          </button>
+        ) : (
+          <div className="stat-tile">
+            <div className="v">{stats?.verifiedProviders ?? '–'}</div>
+            <div className="l">{lang === 'ne' ? 'प्रमाणित स्वास्थ्यकर्मी' : 'Verified providers'}</div>
           </div>
-          <div className="card" style={{ textAlign: 'center', padding: '12px' }}>
-            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--secondary-hover)' }}>{stats.activeBookings}</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{lang === 'ne' ? 'सक्रिय भिजिटहरू' : 'Active Visits'}</div>
-          </div>
-          <div className="card" style={{ textAlign: 'center', padding: '12px' }}>
-            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--primary)' }}>रु. {stats.totalRevenue}</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{lang === 'ne' ? 'प्रमाणीकृत राजस्व' : 'Verified Revenue'}</div>
-          </div>
+        )}
+        <div className="stat-tile">
+          <div className="v" style={{ color: 'var(--success)' }}>रु. {stats?.totalRevenue ?? 0}</div>
+          <div className="l">{lang === 'ne' ? 'प्रमाणित आम्दानी' : 'Verified revenue'}</div>
+        </div>
+      </div>
+
+      <div className="segmented" role="tablist">
+        <TabBtn id="queue" icon={Inbox} ne="डिस्प्याच" en="Dispatch" count={queue.length} warn={overdueCount > 0} />
+        <TabBtn id="phonein" icon={PhoneCall} ne="फोन बुकिङ" en="Phone booking" />
+        <TabBtn id="bookings" icon={Calendar} ne="सबै बुकिङ" en="All bookings" />
+        {isAdminRole && <TabBtn id="pending" icon={ShieldCheck} ne="प्रमाणीकरण" en="Verify" count={pendingProviders.length} warn />}
+        {isAdminRole && <TabBtn id="audit" icon={History} ne="अडिट" en="Audit" />}
+        {isSuperAdmin && <TabBtn id="users" icon={Users} ne="भूमिका" en="Roles" />}
+        {isAdminRole && <TabBtn id="telemetry" icon={Radio} ne="IoT" en="IoT test" />}
+      </div>
+
+      {/* Tab 0: Dispatch queue — the dispatcher's main screen */}
+      {activeTab === 'queue' && (
+        <div className="dispatch-grid">
+          <section>
+            <div className="section-head" style={{ marginBottom: '8px' }}>
+              <h2>{lang === 'ne' ? 'तोक्न बाँकी अनुरोधहरू' : 'Requests to assign'} <span className={`count-pill ${overdueCount ? 'danger' : 'warn'}`}>{queue.length}</span></h2>
+            </div>
+            {queue.length === 0 ? (
+              <div className="card empty-state">
+                <div className="e">✅</div>
+                <h3>{lang === 'ne' ? 'सबै अनुरोधमा स्वास्थ्यकर्मी तोकिएको छ' : 'All caught up'}</h3>
+                <p>{lang === 'ne' ? 'नयाँ अनुरोध आउँदा यहाँ देखिनेछ (४५ सेकेन्डमा रिफ्रेस हुन्छ)।' : 'New requests appear here (refreshes every 45s).'}</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {queue.map(b => {
+                  const overdue = minutesSince(b.createdAt) > QUEUE_ALERT_MINUTES;
+                  return (
+                    <div key={b._id} className={`card visit-card ${overdue ? 'attention' : ''}`}>
+                      <div className="vc-top">
+                        <div className="vc-icon">{b.serviceType?.icon || '🏥'}</div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div className="flex-between" style={{ gap: '8px', flexWrap: 'wrap' }}>
+                            <div className="vc-title">{serviceName(b, lang)}</div>
+                            <span className={`age-tag ${overdue ? 'old' : ''}`}>{ageLabel(b.createdAt, lang)}</span>
+                          </div>
+                          <div className="vc-meta">
+                            <span><Clock size={13} style={{ verticalAlign: '-2px' }} /> <strong style={{ color: 'var(--text-main)' }}>{friendlyTime(b.scheduledTime, lang)}</strong></span>
+                            <span><MapPin size={13} style={{ verticalAlign: '-2px' }} /> {b.address}{b.ward ? `, ${lang === 'ne' ? 'वडा' : 'Ward'} ${b.ward}` : ''}{b.municipality ? `, ${b.municipality}` : ''}</span>
+                            <span>
+                              👤 {b.patient?.name} · <a href={`tel:${b.patient?.phone}`} style={{ color: 'var(--primary)', fontWeight: 700 }}>{b.patient?.phone}</a>
+                              {b.source === 'phone' && <span className="badge badge-pending" style={{ marginLeft: '6px' }}>📞 {lang === 'ne' ? 'फोन' : 'phone'}</span>}
+                            </span>
+                            {b.notes && <span>📝 {b.notes}</span>}
+                            {b.preferredProvider && (
+                              <span style={{ color: '#92400e' }}>
+                                <Star size={13} style={{ verticalAlign: '-2px' }} /> {lang === 'ne' ? 'बिरामीको रोजाइ:' : 'Patient chose:'} <strong>{b.preferredProvider.name}</strong> {lang === 'ne' ? '(स्वीकार गर्न बाँकी)' : '(not yet accepted)'}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <AssignControl b={b} />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          <section>
+            <div className="section-head" style={{ marginBottom: '8px' }}>
+              <h2>{lang === 'ne' ? 'सक्रिय भिजिटहरू' : 'Visits in progress'} <span className="count-pill">{activeVisits.length}</span></h2>
+            </div>
+            {activeVisits.length === 0 ? (
+              <div className="card empty-state"><p>{lang === 'ne' ? 'अहिले कुनै सक्रिय भिजिट छैन' : 'No visits in progress'}</p></div>
+            ) : (
+              <div className="row-list">
+                {activeVisits.map(b => (
+                  <div key={b._id} className="row-item">
+                    <span style={{ fontSize: '1.3rem' }}>{b.serviceType?.icon || '🏥'}</span>
+                    <div className="ri-main">
+                      <div className="ri-title">{b.patient?.name} → {b.provider?.name || '—'}</div>
+                      <div className="ri-sub">{serviceName(b, lang)} · {friendlyTime(b.scheduledTime, lang)}</div>
+                    </div>
+                    <StatusBadge status={b.status} />
+                    {b.provider?.phone && (
+                      <a href={`tel:${b.provider.phone}`} className="icon-btn" aria-label={`Call ${b.provider.name}`}><Phone size={18} /></a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
         </div>
       )}
-
-      {/* Tab Navigation */}
-      <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '8px', overflowX: 'auto' }}>
-        <button
-          onClick={() => setActiveTab('pending')}
-          className={`btn ${activeTab === 'pending' ? 'btn-primary' : 'btn-outline'}`}
-          style={{ width: 'auto', padding: '8px 14px', fontSize: '0.85rem' }}
-        >
-          <ShieldCheck size={16} />
-          <span>{lang === 'ne' ? 'प्रमाणीकरण' : 'Verifications'} ({pendingProviders.length})</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('bookings')}
-          className={`btn ${activeTab === 'bookings' ? 'btn-primary' : 'btn-outline'}`}
-          style={{ width: 'auto', padding: '8px 14px', fontSize: '0.85rem' }}
-        >
-          <Calendar size={16} />
-          <span>{lang === 'ne' ? 'बुकिङ र रिपोर्टहरू' : 'Bookings & Reports'} ({allBookings.length})</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('phonein')}
-          className={`btn ${activeTab === 'phonein' ? 'btn-primary' : 'btn-outline'}`}
-          style={{ width: 'auto', padding: '8px 14px', fontSize: '0.85rem' }}
-        >
-          <PhoneCall size={16} />
-          <span>{lang === 'ne' ? 'फोन बुकिङ डिस्प्याच' : 'Phone Dispatch'}</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('telemetry')}
-          className={`btn ${activeTab === 'telemetry' ? 'btn-primary' : 'btn-outline'}`}
-          style={{ width: 'auto', padding: '8px 14px', fontSize: '0.85rem' }}
-        >
-          <Radio size={16} />
-          <span>{lang === 'ne' ? 'FlapMain उपकरण परीक्षण' : 'FlapMain IoT Test'}</span>
-        </button>
-
-        {isSuperAdmin && (
-          <>
-            <button
-              onClick={() => setActiveTab('users')}
-              className={`btn ${activeTab === 'users' ? 'btn-primary' : 'btn-outline'}`}
-              style={{ width: 'auto', padding: '8px 14px', fontSize: '0.85rem' }}
-            >
-              <Users size={16} />
-              <span>{lang === 'ne' ? 'यूजर र एडमिन प्रबन्धन' : 'User Roles'}</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('audit')}
-              className={`btn ${activeTab === 'audit' ? 'btn-primary' : 'btn-outline'}`}
-              style={{ width: 'auto', padding: '8px 14px', fontSize: '0.85rem' }}
-            >
-              <History size={16} />
-              <span>{lang === 'ne' ? 'अडिट तथा सिस्टम लग' : 'Audit Logs'}</span>
-            </button>
-          </>
-        )}
-      </div>
 
       {/* Tab 1: Pending Provider Verifications */}
       {activeTab === 'pending' && (
@@ -294,11 +429,11 @@ export const AdminDashboardPage = () => {
                 </div>
 
                 <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
-                  <button onClick={() => handleVerify(p._id, 'verified')} className="btn btn-primary" style={{ padding: '8px', fontSize: '0.85rem' }}>
+                  <button onClick={() => handleVerify(p, 'verified')} className="btn btn-primary" style={{ padding: '8px', fontSize: '0.85rem' }}>
                     <Check size={16} />
                     <span>{lang === 'ne' ? 'स्वीकृत गर्नुहोस् (Approve)' : 'Approve Application'}</span>
                   </button>
-                  <button onClick={() => handleVerify(p._id, 'rejected')} className="btn btn-danger" style={{ padding: '8px', fontSize: '0.85rem' }}>
+                  <button onClick={() => handleVerify(p, 'rejected')} className="btn btn-danger" style={{ padding: '8px', fontSize: '0.85rem' }}>
                     <X size={16} />
                     <span>{lang === 'ne' ? 'अस्वीकृत गर्नुहोस् (Reject)' : 'Reject Application'}</span>
                   </button>
@@ -313,10 +448,35 @@ export const AdminDashboardPage = () => {
       {activeTab === 'bookings' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <h3 style={{ fontSize: '1.1rem', fontWeight: 800 }}>
-            {lang === 'ne' ? 'सबै बुकिङहरू, मेडिकल रिपोर्ट र भुक्तानी प्रमाणीकरण' : 'All Bookings, Medical Reports & Payment Verification'}
+            {lang === 'ne' ? 'सबै बुकिङहरू, मेडिकल रिपोर्ट र भुक्तानी' : 'All bookings, reports & payments'}
           </h3>
 
-          {allBookings.map(b => (
+          <div className="admin-toolbar">
+            <div style={{ position: 'relative', flex: '1 1 220px' }}>
+              <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+              <input
+                type="search"
+                className="form-input"
+                style={{ paddingLeft: '36px', width: '100%' }}
+                placeholder={lang === 'ne' ? 'नाम, फोन, ठेगाना वा ID खोज्नुहोस्' : 'Search name, phone, address or ID'}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            <div className="chip-row">
+              {BOOKING_FILTERS.map(f => (
+                <button key={f.key} type="button" className="chip" aria-pressed={bookingFilter === f.key} onClick={() => setBookingFilter(f.key)}>
+                  {lang === 'ne' ? f.ne : f.en}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {!loading && filteredBookings.length === 0 && (
+            <div className="card empty-state"><div className="e">🔍</div><h3>{lang === 'ne' ? 'कुनै बुकिङ भेटिएन' : 'No bookings match'}</h3></div>
+          )}
+
+          {filteredBookings.map(b => (
             <div key={b._id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div className="flex-between">
                 <div>
@@ -419,20 +579,7 @@ export const AdminDashboardPage = () => {
                   <label className="form-label" style={{ fontSize: '0.8rem' }}>
                     {lang === 'ne' ? 'स्वास्थ्यकर्मी असाइन गर्नुहोस्:' : 'Assign Verified Provider:'}
                   </label>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <select
-                      className="form-select"
-                      style={{ fontSize: '0.85rem', padding: '6px' }}
-                      onChange={(e) => e.target.value && handleAssignProvider(b._id, e.target.value)}
-                    >
-                      <option value="">{lang === 'ne' ? 'प्रदायक छान्नुहोस्...' : 'Select Provider...'}</option>
-                      {verifiedProviders.map(vp => (
-                        <option key={vp._id} value={vp._id}>
-                          {vp.name} ({vp.category?.displayName?.[lang] || vp.category?.displayName?.ne})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  <AssignControl b={b} />
                 </div>
               )}
             </div>
@@ -703,6 +850,7 @@ export const AdminDashboardPage = () => {
         onClose={() => setIsMapOpen(false)}
         onSelectLocation={handleLocationSelected}
       />
+      {flash}
     </div>
   );
 };

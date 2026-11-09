@@ -6,9 +6,12 @@ import { HOTLINE, HOTLINE_DISPLAY, AMBULANCE } from '../config';
 // Emergency / panic contact (readme §6). Opens a two-option sheet so a life-threatening case
 // goes straight to 102 instead of waiting on our dispatch line.
 export const EmergencyButton = () => {
-  const { lang } = useAuth();
+  const { lang, isStaff } = useAuth();
   const [open, setOpen] = useState(false);
   const ne = lang === 'ne';
+
+  // Staff are the dispatch line; the patient-facing panic button would only cover their queue.
+  if (isStaff) return null;
 
   return (
     <>
